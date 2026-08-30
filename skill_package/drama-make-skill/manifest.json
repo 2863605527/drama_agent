@@ -1,0 +1,51 @@
+{
+  "name": "drama-make-skill",
+  "display_name": "短剧自动生成 Skill（Drama Make）",
+  "version": "2.6.8",
+  "author": "drama-agent",
+  "description": "从一句话创意自动生成短剧全流程资产：LLM 解析剧本（输出角色/场景资产/分镜/片段分组，片段由 LLM 像导演一样决定每段含几个分镜，短剧本少片段多分镜）→ 展示空的角色/场景模块由用户逐个手动生成或上传图片（角色立绘 + 场景昼夜双图，未全部就绪禁止进入视频阶段）→ 人工审核 → 小云雀式多分镜片段视频由用户逐片段手动触发（场景锚定 + 角色/场景 <node-asset> 占位标签 + duration-ms 分镜脚本，台词直接融入分镜描述）→ 配音（逐镜 TTS 按起始毫秒时间轴对齐混入，或模型原生音频）→ 用户手动合成（已生成 2 个以上片段即可部分合成，全部生成则合成完整短剧）。媒体通道配置化：火山即梦 / 火山方舟 Seedance 2.0 / 通用 HTTP，换模型换供应商只改环境变量不改代码。支持 6 种画风、人工审核断点、资产齐全门槛校验、片段级失败重试、场景描述编辑。",
+  "language": "python",
+  "entry": "scripts/drama_make_skill.py",
+  "trigger_keywords": [
+    "短剧", "分镜", "剧本生成", "角色立绘", "场景图", "短剧视频",
+    "自动生成视频", "drama", "storyboard", "短视频创作", "Seedance", "即梦"
+  ],
+  "tags": ["视频生成", "AIGC", "剧本创作", "场景", "分镜", "多模态", "TTS"],
+  "scope": ["user", "project"],
+  "env_required": [
+    "LLM_API_URL",
+    "LLM_API_KEY",
+    "LLM_MODEL",
+    "VOLC_ACCESS_KEY",
+    "VOLC_SECRET_KEY"
+  ],
+  "env_optional": [
+    "VIDEO_CHANNEL",
+    "IMAGE_CHANNEL",
+    "ARK_API_KEY",
+    "ARK_VIDEO_MODEL",
+    "ARK_IMAGE_MODEL",
+    "VIDEO_DURATION_SLOTS",
+    "VIDEO_SLOT_FRAMES",
+    "VIDEO_DURATION_RANGE",
+    "VIDEO_TRIM",
+    "ENABLE_TTS",
+    "TTS_VOICE",
+    "SEGMENT_MAX_SHOTS",
+    "VIDEO_MAX_CONCURRENCY",
+    "IMAGE_MAX_CONCURRENCY"
+  ],
+  "dependencies": {
+    "python": [
+      "fastapi>=0.110",
+      "uvicorn>=0.29",
+      "pydantic>=2.6",
+      "requests>=2.31",
+      "python-dotenv>=1.0",
+      "volcengine-python-sdk>=1.0.90",
+      "imageio-ffmpeg>=0.4.9",
+      "edge-tts>=6.1.0"
+    ]
+  },
+  "license": "MIT"
+}

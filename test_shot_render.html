@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>分镜渲染测试</title>
+<style>
+  :root {
+    --bg-0: #0a0c16; --bg-1: #10132a; --card: rgba(255,255,255,0.045);
+    --card-border: rgba(255,255,255,0.09); --text-0: #f2f4ff; --text-1: #a7add1;
+    --text-2: #6b7196; --accent: #8b5cf6; --accent-2: #f6c94a; --accent-3: #22d3ee;
+    --ok: #34d399; --warn: #fbbf24; --err: #f87171; --radius: 16px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; color: var(--text-0); background: linear-gradient(160deg,var(--bg-0),var(--bg-1)); min-height: 100vh; }
+  main { max-width: 1100px; margin: 0 auto; padding: 30px 24px 80px; display: flex; flex-direction: column; gap: 22px; }
+  .card { background: var(--card); border: 1px solid var(--card-border); border-radius: var(--radius); backdrop-filter: blur(14px); padding: 24px; box-shadow: 0 20px 50px rgba(0,0,0,.35); }
+  .hidden { display: none !important; }
+  .title-banner { display: flex; align-items: center; gap: 16px; }
+  .title-banner .icon { font-size: 34px; }
+  .title-banner h2 { font-size: 21px; font-weight: 700; }
+  .title-banner .meta { font-size: 13px; color: var(--text-2); margin-top: 5px; }
+  .badge { display: inline-block; font-size: 11px; padding: 3px 10px; border-radius: 999px; background: rgba(139,92,246,.15); border: 1px solid rgba(139,92,246,.4); color: #c4b5fd; margin-left: 10px; vertical-align: 2px; }
+  .section-title { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+  .section-title::before { content: ""; width: 4px; height: 18px; border-radius: 2px; background: linear-gradient(180deg,var(--accent),var(--accent-2)); }
+  .char-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; }
+  .char-card { background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.1); border-radius: 14px; overflow: hidden; }
+  .char-avatar { position: relative; aspect-ratio: 1 / 1; background: #151832; overflow: hidden; }
+  .char-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .char-info { padding: 12px 14px; }
+  .char-info h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+  .char-info .idx { font-size: 10.5px; color: var(--text-2); background: rgba(255,255,255,.07); padding: 2px 7px; border-radius: 6px; }
+  .char-info p { font-size: 12px; color: var(--text-2); line-height: 1.55; }
+  .shot-sequence { display: flex; flex-direction: column; gap: 16px; }
+  .shot-card { display: flex; gap: 18px; background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.1); border-radius: 16px; padding: 18px; }
+  .shot-media { flex-shrink: 0; width: 340px; display: flex; flex-direction: column; gap: 10px; }
+  .shot-img-wrap { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #151832; border: 1px solid rgba(255,255,255,.1); }
+  .shot-img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .shot-no { position: absolute; top: 8px; left: 8px; z-index: 2; font-size: 11px; font-weight: 700; color: #fff; background: rgba(11,13,23,.72); border: 1px solid rgba(255,255,255,.18); padding: 2px 9px; border-radius: 999px; }
+  .shot-video-wrap { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #0b0d17; border: 1px solid rgba(255,255,255,.1); }
+  .shot-video { width: 100%; height: 100%; border-radius: 12px; display: none; background: #000; object-fit: contain; }
+  .shot-video.show { display: block; }
+  .shot-video-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--text-2); font-size: 12px; flex-direction: column; }
+  .shot-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+  .shot-body .field { display: flex; flex-direction: column; gap: 5px; }
+  .shot-body .field label { font-size: 11px; color: var(--text-2); }
+  .shot-body .field textarea, .shot-body .field input { width: 100%; background: rgba(0,0,0,.32); border: 1px solid rgba(255,255,255,.12); border-radius: 10px; padding: 10px 12px; color: var(--text-0); font-size: 13px; font-family: inherit; outline: none; line-height: 1.55; }
+  .shot-body .field textarea { min-height: 70px; resize: vertical; }
+  .shot-body .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .shot-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+  .btn { display: inline-flex; align-items: center; gap: 9px; cursor: pointer; border: none; border-radius: 12px; padding: 13px 28px; font-size: 15px; font-weight: 600; letter-spacing: 1px; color: #fff; background: linear-gradient(120deg,#7c3aed,#a855f7 55%,#f0abfc); }
+  .btn-sec { background: rgba(255,255,255,.07); color: var(--text-0); box-shadow: none; border: 1px solid rgba(255,255,255,.16); }
+  .img-actions { position: absolute; bottom: 8px; left: 0; right: 0; display: flex; justify-content: center; gap: 8px; opacity: 0; transition: opacity .25s; z-index: 3; }
+  .shot-img-wrap:hover .img-actions { opacity: 1; }
+  .img-btn { font-size: 11px; padding: 5px 11px; border-radius: 8px; cursor: pointer; border: 1px solid rgba(255,255,255,.22); background: rgba(0,0,0,.65); color: #fff; }
+  .done-banner { text-align: center; padding: 26px 20px; border: 1px solid rgba(52,211,153,.4); background: rgba(52,211,153,.07); border-radius: 14px; }
+  .done-banner .big { font-size: 20px; font-weight: 700; color: var(--ok); margin-bottom: 8px; }
+  .done-banner .small { font-size: 13px; color: var(--text-1); }
+  @media (max-width: 860px) { .shot-card { flex-direction: column; } .shot-media { width: 100%; } .shot-body .field-row { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <section class="card" id="scriptCard">
+    <div class="title-banner">
+      <div class="icon">📜</div>
+      <div>
+        <h2 id="scriptTitle">《未命名剧本》<span class="badge" id="scriptBadge">已解析 · 3 角色 · 3 分镜</span></h2>
+        <div class="meta" id="scriptMeta">等待剧本解析完成…</div>
+      </div>
+    </div>
+  </section>
+  <section class="card" id="charCard">
+    <div class="section-title">角色形象</div>
+    <div class="char-grid" id="charGrid"></div>
+  </section>
+  <section class="card hidden" id="doneBanner">
+    <div class="done-banner">
+      <div class="big">🖼️ 分镜图已生成完毕！</div>
+      <div class="small">请在下方每个分镜卡片中点击「🎥 生成此镜视频」手动生成视频，全部完成后点击「🎬 合成全集」</div>
+    </div>
+  </section>
+  <section class="card" id="shotCard">
+    <div class="section-title">分镜序列</div>
+    <div class="shot-sequence" id="shotSequence"></div>
+  </section>
+</main>
+<script>
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
+}
+function buildShotCardHTML(shot, i) {
+  const hasImg = !!shot.image_url;
+  const hasVideo = !!shot.video_url;
+  return `
+    <div class="shot-media">
+      <div class="shot-img-wrap" id="shot-img-wrap-${shot.shot_id}">
+        <span class="shot-no">分镜 ${String(i + 1).padStart(2, "0")}</span>
+        <div class="img-actions"><button class="img-btn">🖼️ 替换图片</button></div>
+      </div>
+      <div class="shot-video-wrap" id="shot-video-wrap-${shot.shot_id}">
+        <div class="shot-video-placeholder" id="shot-video-placeholder-${shot.shot_id}">
+          <span>${hasVideo ? "" : "⏳ 视频未生成 · 点击右侧「🎥 生成此镜视频」"}</span>
+        </div>
+        <video class="shot-video" id="shot-video-${shot.shot_id}" controls preload="metadata"></video>
+      </div>
+    </div>
+    <div class="shot-body">
+      <div class="field"><label>分镜文案（可编辑）</label><textarea>${escapeHtml(shot.content)}</textarea></div>
+      <div class="field-row">
+        <div class="field"><label>镜头</label><input value="${escapeHtml(shot.camera)}"></div>
+        <div class="field"><label>光影</label><input value="${escapeHtml(shot.lighting)}"></div>
+      </div>
+      <div class="field"><label>画面描述 Prompt</label><textarea>${escapeHtml(shot.prompt)}</textarea></div>
+      <div class="shot-actions">
+        <button class="btn">${hasVideo ? "重新生成视频" : "生成此镜视频"}</button>
+        <button class="btn btn-sec">🖼️ 替换图片</button>
+      </div>
+    </div>`;
+}
+function fillShotImage(d, i) {
+  const wrap = document.getElementById("shot-img-wrap-" + d.shot_id);
+  if (!wrap) return;
+  wrap.innerHTML = `<span class="shot-no">分镜 ${String(i + 1).padStart(2, "0")}</span>`;
+  const img = document.createElement("img");
+  img.src = d.image_url;
+  img.alt = "分镜图";
+  img.onerror = () => { img.style.display='none'; wrap.innerHTML += `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#f87171;font-size:13px">图片加载失败（测试占位）</div>`; };
+  wrap.appendChild(img);
+  const actions = document.createElement("div");
+  actions.className = "img-actions";
+  actions.innerHTML = `<button class="img-btn">🖼️ 替换图片</button>`;
+  wrap.appendChild(actions);
+}
+function renderFullTask(task) {
+  const s = task.script;
+  document.getElementById("scriptTitle").innerHTML = `《${escapeHtml(s.title)}》<span class="badge" id="scriptBadge">已解析 · ${s.characters.length} 角色 · ${s.shots.length} 分镜</span>`;
+  document.getElementById("scriptMeta").textContent = `角色：${s.characters.map(c => c.name).join("、")} ｜ 分镜：${s.shots.length} 个镜头`;
+  const grid = document.getElementById("charGrid");
+  grid.innerHTML = "";
+  s.characters.forEach((c, i) => {
+    const card = document.createElement("div");
+    card.className = "char-card";
+    card.innerHTML = `
+      <div class="char-avatar"><img src="https://picsum.photos/seed/${c.char_id}/300/300" alt="${escapeHtml(c.name)}"></div>
+      <div class="char-info"><h4><span class="idx">${String(i+1).padStart(2,"0")}</span>${escapeHtml(c.name)}</h4><p>${escapeHtml(c.description)}</p></div>`;
+    grid.appendChild(card);
+  });
+  const seq = document.getElementById("shotSequence");
+  seq.innerHTML = "";
+  s.shots.forEach((shot, i) => {
+    const card = document.createElement("div");
+    card.className = "shot-card";
+    card.id = "shot-card-" + shot.shot_id;
+    card.dataset.shotId = shot.shot_id;
+    card.dataset.index = i;
+    card.innerHTML = buildShotCardHTML(shot, i);
+    seq.appendChild(card);
+    if (shot.image_url) fillShotImage({ shot_id: shot.shot_id, image_url: shot.image_url }, i);
+  });
+  if (task.status === "done") document.getElementById("doneBanner").classList.remove("hidden");
+}
+
+// 模拟数据：分镜图已生成、视频未生成
+renderFullTask({
+  status: "done",
+  script: {
+    title: "迟来的道歉信",
+    characters: [
+      { char_id: "c1", name: "林小满", description: "18岁，倔强又心软，眼里藏着光" },
+      { char_id: "c2", name: "顾辰风", description: "19岁，外表冷峻，内心温柔" },
+      { char_id: "c3", name: "苏墨", description: "18岁，表面开朗，实则孤独" }
+    ],
+    shots: [
+      { shot_id: "sh1", content: "教室走廊，林小满背靠着窗，手里拿着那封被退回的情书", camera: "中景", lighting: "午后阳光", prompt: "school hallway, girl holding letter, soft afternoon light", image_url: "https://picsum.photos/seed/shot1/640/360" },
+      { shot_id: "sh2", content: "顾辰风追出来，站在楼梯口欲言又止", camera: "近景", lighting: "侧逆光", prompt: "boy on staircase, backlit, emotional", image_url: "https://picsum.photos/seed/shot2/640/360" },
+      { shot_id: "sh3", content: "苏墨在远处看着两人，嘴角带着复杂的笑", camera: "远景", lighting: "黄昏", prompt: "distant observer, sunset, complex emotion", image_url: "https://picsum.photos/seed/shot3/640/360" }
+    ]
+  }
+});
+</script>
+</body>
+</html>

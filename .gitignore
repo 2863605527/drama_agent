@@ -1,0 +1,17 @@
+# Python 缓存文件（你说的 __pycache__）
+__pycache__/
+*.pyc
+*.pyo
+
+# 环境变量文件（你说的 .env）
+.env
+.env.local
+.env.*.local
+
+# 常见的 IDE 和系统垃圾文件（顺手帮你加上）
+.vscode/
+.idea/
+.DS_Store
+*.log
+.workbuddy/
+assets/
