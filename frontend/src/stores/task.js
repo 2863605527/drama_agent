@@ -111,6 +111,24 @@ export const useTaskStore = defineStore('task', {
       this.assetBusyMap = {}
     },
 
+    // 登出 / 401 / 切换账号时彻底清空本用户会话状态：
+    // 不清会导致切账号后残留上一账号的任务列表、流程图与日志（历史 bug）
+    reset() {
+      this.closeStream()
+      this.tasks = []
+      this.current = null
+      this.currentId = ''
+      this.logs = []
+      this.maxSeq = 0
+      this.maxTs = 0
+      this.segRuntime = {}
+      this.assetBusyMap = {}
+      this.loadingList = false
+      this.connected = false
+      this.navTick = 0
+      this._autoReloading = false
+    },
+
     // ---------------- 选中任务 + SSE ----------------
     async selectTask(id) {
       this.closeStream()

@@ -1,5 +1,6 @@
 import axios from 'axios'
 import router from '@/router'
+import { useAuthStore } from '@/stores/auth'
 
 const TOKEN_KEY = 'drama_token'
 const USER_KEY = 'drama_user'
@@ -42,12 +43,13 @@ export function extractError(err) {
   return err?.message || '请求失败'
 }
 
-// 响应拦截：401 清登录态并跳登录页
+// 响应拦截：401 清登录态并跳登录页（同步清 pinia 状态，避免切账号残留上一账号数据）
 request.interceptors.response.use(
   (resp) => resp.data,
   (err) => {
     if (err?.response?.status === 401) {
-      clearAuth()
+      // 同步清理 pinia + localStorage；App.vue 监听到 isLogin=false 后统一 reset task/channel store
+      try { useAuthStore().logout() } catch { clearAuth() }
       if (router.currentRoute.value.name !== 'login') {
         router.replace({ name: 'login' })
       }

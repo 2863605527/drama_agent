@@ -12,7 +12,7 @@
 | 大模型 | DeepSeek（剧本生成与结构化解析，走 LLM MCP，OpenAI 兼容可换通道） |
 | 图片/视频 | 火山引擎即梦（cv 通道，可切方舟 ark / 通用 HTTP），经 image/video MCP |
 | 多用户通道 | 每个用户可在前端自选 cv/ark/http 通道并配置自己的模型与 Key，Fernet 加密落库，提交任务时快照（详见「用户运行时通道配置」） |
-| 前端 | Vue 3 + Vite + Pinia + Vue Router 工程（`frontend/`，构建产物由后端托管）；旧版单体页保留在 `static/` |
+| 前端 | Vue 3 + Vite + Pinia + Vue Router 工程（`frontend/`，构建产物由后端托管） |
 | 配音 | edge-tts（免费，无需密钥），经 TTS MCP |
 | 数据库 | MySQL 8.0（SQLAlchemy 2.0 async + aiomysql + Alembic 迁移） |
 | 异步队列 | Celery + Redis（可选，`USE_CELERY=true` 启用，视频/合成剥离到独立 worker） |
@@ -24,7 +24,7 @@
 ## 架构
 
 ```
-浏览器  Vue3 前端 frontend/dist（根路径 /，history 路由 SPA 回退；旧版在 /static）
+浏览器  Vue3 前端 frontend/dist（根路径 /，history 路由 SPA 回退）
         │  HTTP / SSE
         ▼
 FastAPI (main.py = 应用壳, 端口 8010)
@@ -93,7 +93,6 @@ drama_agent/
 │   ├── drama_schema.py        # 短剧 Pydantic 数据模型（DramaTask.channel_profile 通道快照）
 │   └── channel_schema.py      # ★ 通道元数据 CHANNEL_META + 校验/掩码/合并（前端动态表单唯一权威）
 ├── frontend/                  # ★ Vue3+Vite 前端工程（src 源码 + dist 构建产物，详见 frontend/README.md）
-├── static/index.html          # 旧版单体前端（保留，访问 /static/index.html）
 ├── tests/                     # pytest：单元 + MCP 通道 + 通道配置接口 + 端到端 + 队列分发
 ├── .github/workflows/ci.yml   # CI/CD：测试 + Skill 自测 + 镜像构建推送 GHCR
 ├── Dockerfile / docker-compose.yml（含 redis、celery-worker，profile 按需启用）
@@ -109,10 +108,9 @@ drama_agent/
 ```bash
 # 1. 准备环境变量
 cp .env.example .env
-#   编辑 .env：JWT_SECRET_KEY 必须改成一段随机字符串；
-#   VOLC_* / LLM_* 仅作为用户未配置通道时的兜底（通道的正式配置入口是登录后的前端「模型通道」弹窗，
-#   支持 OpenAI 兼容 / 火山即梦 CV / 方舟 ARK / 通用 HTTP 手动填写 Key 与模型名）
-#   （密钥去哪申请、模型名怎么填：docs/媒体通道配置教程-cv-ark-http.md）
+#   编辑 .env：只需改 JWT_SECRET_KEY 为一段随机字符串、MYSQL_* 密码（生产）；
+#   模型通道（大模型/图片/视频）已改为【前端登录后手动配置】，无需也不建议在 .env 里配 Key。
+#   （注册地址、Key 获取、模型名怎么填：docs/媒体通道配置教程-cv-ark-http.md）
 
 # 2. 一键启动（MySQL + 应用，首次构建约几分钟）
 docker compose up -d --build
@@ -124,7 +122,6 @@ docker compose ps
 启动后访问：
 
 - 前端页面（Vue，根路径）：<http://127.0.0.1:8010/>（history 路由刷新自动回退，如 `/login`）
-- 旧版单体前端：<http://127.0.0.1:8010/static/index.html>
 - 接口文档：<http://127.0.0.1:8010/docs>
 - 健康检查：<http://127.0.0.1:8010/health>
 - 指标：<http://127.0.0.1:8010/metrics>
@@ -138,8 +135,8 @@ docker compose ps
 
 ```powershell
 # 0) 使用项目解释器（示例为 Windows 上的 F:\python\python.exe，需已装 requirements）
-# 1) 配置环境变量
-copy .env.example .env   # 填入 VOLC_ACCESS_KEY / VOLC_SECRET_KEY / LLM_API_KEY
+# 1) 配置环境变量（只需基础项；模型通道 Key 登录后在【前端弹窗】配置，不写进 .env）
+copy .env.example .env   # 改 JWT_SECRET_KEY；VOLC_*/LLM_* 可留空
 # 2) 无 MySQL 时可用 SQLite 跑通（PowerShell）
 $env:DRAMA_DB="sqlite"
 # 3) 构建前端（首次或前端有改动时）
@@ -155,12 +152,11 @@ F:\python\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8010
 
 | 变量 | 必需 | 说明 |
 |---|---|---|
-| `VOLC_ACCESS_KEY` / `VOLC_SECRET_KEY` | 是 | 火山引擎图片/视频密钥 |
-| `LLM_API_KEY` | 是 | DeepSeek API Key |
-| `LLM_MODEL` | 否 | 默认 deepseek-chat |
+| `JWT_SECRET_KEY` | 是 | 生产**必须**改为随机串，否则启动告警 |
 | `MYSQL_*` | 是 | 数据库连接，compose 已覆盖容器内地址为 `mysql` |
 | `DRAMA_DB` | 否 | 设为 `sqlite` 时用本地 SQLite（`./drama_agent.db`），免 MySQL 跑通/测试；不设则走 MySQL |
-| `JWT_SECRET_KEY` | 是 | 生产**必须**改为随机串，否则启动告警 |
+| `VOLC_ACCESS_KEY` / `VOLC_SECRET_KEY` | 否 | ⚠️ 仅兜底：**模型通道已改为前端手动配置**，.env 不配也能用（登录后弹窗填写） |
+| `LLM_API_KEY` / `LLM_MODEL` | 否 | ⚠️ 仅兜底：同上，正式配置入口是前端「模型通道」弹窗 |
 | `JWT_EXPIRE_MINUTES` | 否 | token 有效期（分钟），默认 1440 |
 | `ENVIRONMENT` | 否 | `development` / `production`（生产强制校验密钥） |
 | `CORS_ORIGINS` | 否 | 跨域白名单，`*` 或逗号分隔域名 |
@@ -175,6 +171,8 @@ F:\python\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8010
 | `CELERY_CONCURRENCY` | 否 | 单 worker 并发视频任务数，默认 2 |
 
 > 启动时 `core/config.py` 会自动校验必需变量：缺失只告警（开发）或强提示（生产），避免运行到一半才发现密钥没配。
+> **通道配置唯一入口 = 登录后前端「模型通道」弹窗**：每个用户独立配置（LLM/图片/视频，手动填模型名与 Key），
+> 加密落库、按任务快照；未配置任何通道时后端才回退 `.env` 兜底。
 
 ## 数据库迁移（Alembic）
 
@@ -348,8 +346,7 @@ $env:DRAMA_DB="sqlite"; F:\python\python.exe -m pytest tests -q -p no:cacheprovi
 | `PUT /api/user/channel-config` | 校验 + 掩码合并 + 加密保存，返回脱敏配置 |
 | `POST /api/user/channel-test` | 连通测试：LLM 发极简真实 ping；图片/视频只校验凭据完整性（不烧额度） |
 
-> 加密密钥默认由 `JWT_SECRET_KEY` 经 SHA256 派生；生产建议改为独立环境变量/KMS 托管并支持轮换
-> （见 `docs/企业级评估与改造报告.md` 第四节 P0 / 第六节 P2-9）。
+> 加密密钥默认由 `JWT_SECRET_KEY` 经 SHA256 派生；生产建议改为独立环境变量/KMS 托管并支持轮换。
 
 ### 通用 HTTP 通道怎么填（以硅基流动 SiliconFlow 为例）
 
@@ -476,9 +473,8 @@ DRAMA_MYSQL_PWD=xxx bash scripts/backup.sh      # 密码走环境变量，不写
 | 文档 | 内容 |
 |---|---|
 | [`媒体通道配置教程-cv-ark-http.md`](docs/媒体通道配置教程-cv-ark-http.md) | ★ 三通道图文教程：注册地址、Key 获取位置（含截图）、模型名对照、常见问题 |
-| [`方舟Seedance升级指南.md`](docs/方舟Seedance升级指南.md) | cv → ark 切换的完整步骤、效果对比与 `.env` 配置 |
+| [`方舟Seedance升级指南.md`](docs/方舟Seedance升级指南.md) | 前端弹窗切换方舟（ark）通道的完整步骤、效果对比与常见问题 |
 | [`硅基流动视频通道配置指南.md`](docs/硅基流动视频通道配置指南.md) | 通用 HTTP 通道对接硅基流动的逐字段填法与踩坑记录 |
-| [`企业级评估与改造报告.md`](docs/企业级评估与改造报告.md) | 架构评估、差距分析与改造路线 |
 
 ## 常用运维命令
 

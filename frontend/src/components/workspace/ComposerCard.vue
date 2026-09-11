@@ -24,6 +24,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useTaskStore } from '@/stores/task'
+import { useChannelStore } from '@/stores/channel'
 import { useToastStore } from '@/stores/toast'
 import { STYLE_OPTIONS, episodeCn } from '@/utils/format'
 import { extractError } from '@/api/request'
@@ -39,10 +40,19 @@ const props = defineProps({
 const emit = defineEmits(['done', 'cancel'])
 
 const taskStore = useTaskStore()
+const channel = useChannelStore()
 const toast = useToastStore()
 const prompt = ref('')
 const style = ref('anime')
 const submitting = ref(false)
+
+// 大模型通道是否已手动配置（channel 不为 'env'/'' 且填了 Key）
+const llmReady = computed(() => {
+  const llm = channel.config?.llm
+  if (!llm) return false
+  if (llm.channel === 'env' || !llm.channel) return false
+  return !!(llm.api_key || llm.key || llm.token)
+})
 
 const title = computed(() => props.episode
   ? `📚 续写《${props.seriesTitle || '本系列'}》第 ${episodeCn(props.nextNo)} 集`
@@ -56,6 +66,12 @@ const hint = computed(() => props.episode
 
 async function submit() {
   if (!prompt.value.trim()) return
+  // 未配置大模型：不进入流程，弹提示并打开通道配置弹窗
+  if (!llmReady.value) {
+    toast.err('尚未配置大模型（LLM）通道与 Key，请先在弹窗中完成配置')
+    channel.openDialog()
+    return
+  }
   submitting.value = true
   try {
     if (props.episode) {

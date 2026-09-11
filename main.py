@@ -239,8 +239,6 @@ async def _unhandled_zh(request: Request, exc: Exception):
 # ---------- 业务路由（按类注册，必须在 SPA 托管之前） ----------
 api_routes.register_routers(app)
 
-# 静态资源（目录在 lifespan 中确保创建）
-app.mount("/static", NoCacheStaticFiles(directory="static"), name="static")
 # /assets：images/uploads 长缓存（uuid 文件名不可变），videos/audio/final 保持 no-cache
 app.mount("/assets", CacheStaticFiles(directory="assets"), name="assets")
 
@@ -258,7 +256,7 @@ else:
         return JSONResponse(content={
             "name": "Drama-Agent 短剧生成系统 API",
             "frontend": "未检测到 frontend/dist 构建产物：开发期请用 `cd frontend && npm run dev`，"
-                        "或执行 `npm run build` 后由后端托管页面。旧版单页仍可访问 /static/index.html",
+                        "或执行 `npm run build` 后由后端托管页面。",
             "docs": "/docs",
         })
 

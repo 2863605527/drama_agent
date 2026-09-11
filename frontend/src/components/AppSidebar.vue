@@ -149,7 +149,8 @@ function openChannel() {
 }
 
 function logout() {
-  taskStore.closeStream()
+  // reset 会关 SSE 并清空任务/日志；App.vue 的 isLogin watch 再兜底清一次
+  taskStore.reset()
   auth.logout()
   toast.ok('已退出登录')
   router.replace({ name: 'login' })

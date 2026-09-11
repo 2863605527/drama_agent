@@ -1,7 +1,7 @@
 # 媒体通道使用教程：火山即梦（cv）· 火山方舟（ark）· 通用 HTTP
 
 > 适用版本：最新版（前端「模型通道配置」弹窗 + http_presets 域名自动识别预设）
-> 三种通道均支持**前端按用户配置**（推荐，无需重启）和 **`.env` 服务端默认**两种方式。
+> 三种通道均在**前端登录后手动配置**（每个用户独立，无需重启服务），不再支持 `.env` 配置通道。
 
 ---
 
@@ -28,7 +28,8 @@
 4. 配置经 **Fernet 加密**落库，接口只回掩码；留空不改的字段自动沿用旧值；
 5. **提交任务时把当前配置快照进任务**——事后再改通道，不影响已在跑的任务；但图片/视频的「重绘/重生成」会使用你**最新**的通道配置。
 
-不想用前端时，也可以改 `.env` 里的 `IMAGE_CHANNEL` / `VIDEO_CHANNEL` 等变量作为服务端默认（见各通道章节末尾），改完需重启服务。
+> ⚠️ 新版已移除「系统默认(.env)」通道选项，`.env` 里的 VOLC/LLM 仅作最后兜底，**不是配置入口**；
+> 未配置任何通道前，前端会提示先完成配置再生成。
 
 ---
 
@@ -61,15 +62,13 @@ cv 通道走火山引擎**视觉智能服务**（即梦系列模型），凭据�
 
 ### 2.4 模型名称（req_key）怎么填
 
-cv 通道的「模型名」在火山体系里叫 **req_key**，本系统默认值（一般不用改）：
+cv 通道的「模型名」在火山体系里叫 **req_key**，常用值参考（以控制台「视觉智能 → 模型列表」实际显示为准）：
 
 | 能力 | req_key | 说明 |
 |---|---|---|
-| 图片（立绘/场景图） | `jimeng_high_aes_general_v21_L` | 即梦图片 2.1 通用版，`.env` 里 `IMAGE_REQ_KEY` |
-| 图片图生图（黑夜） | `jimeng_i2i_v30`（`.env` 的 `IMAGE_I2I_REQ_KEY`） | ⚠️ 部分账号未开放，仅方舟/HTTP 通道稳定支持图生图 |
-| 视频 | `jimeng_t2v_v30` | 即梦视频 3.0，`.env` 里 `VIDEO_REQ_KEY`；时长 121 帧≈5s / 241 帧≈10s 两档 |
-
-> req_key 如有更新以控制台「视觉智能 → 模型列表」实际显示为准。
+| 图片（立绘/场景图） | `jimeng_high_aes_general_v21_L` | 即梦图片 2.1 通用版 |
+| 图片图生图（黑夜） | `jimeng_i2i_v30` | ⚠️ 部分账号未开放，仅方舟/HTTP 通道稳定支持图生图 |
+| 视频 | `jimeng_t2v_v30` | 即梦视频 3.0；时长 121 帧≈5s / 241 帧≈10s 两档 |
 
 ### 2.5 填写方式
 
@@ -79,16 +78,7 @@ cv 通道的「模型名」在火山体系里叫 **req_key**，本系统默认�
 |---|---|
 | AccessKey | 你在 2.2 拿到的 AccessKey ID |
 | SecretKey | 对应的 Secret Access Key |
-| 模型 req_key | 留空用系统默认（`jimeng_high_aes_general_v21_L` / `jimeng_t2v_v30`），或按 2.4 自定义 |
-
-**`.env` 服务端默认**：
-
-```env
-IMAGE_CHANNEL=volc_cv
-VIDEO_CHANNEL=volc_cv
-VOLC_ACCESS_KEY=AK你的AccessKeyId
-VOLC_SECRET_KEY=你的SecretAccessKey
-```
+| 模型 req_key | 手动填写上表 req_key（placeholder 给出示例，可填控制台最新模型） |
 
 ---
 
@@ -125,21 +115,10 @@ VOLC_SECRET_KEY=你的SecretAccessKey
 |---|---|---|
 | API Key | `volc-sk-xxx`（同一个） | 同一个 `volc-sk-xxx` |
 | 模型名 | `doubao-seedream-5-0-260128` | `doubao-seedance-2-0-260128` |
+| 分辨率 / 宽高比 | — | 720p / 9:16 等（下拉选择） |
+| 原生音频 | — | 开（Seedance 自带台词人声） |
 
-**`.env` 服务端默认**（完整参数见 `docs/方舟Seedance升级指南.md`）：
-
-```env
-IMAGE_CHANNEL=volc_ark
-VIDEO_CHANNEL=volc_ark
-ARK_API_KEY=volc-sk-xxx
-ARK_IMAGE_MODEL=doubao-seedream-5-0-260128
-ARK_VIDEO_MODEL=doubao-seedance-2-0-260128
-ARK_VIDEO_RESOLUTION=720p
-ARK_VIDEO_RATIO=9:16
-ARK_VIDEO_AUDIO=true          # Seedance 原生音频（自带台词人声）
-VIDEO_DURATION_SLOTS=any      # 1~15s 任意时长，不再裁剪
-VIDEO_TRIM=false
-```
+> 切换步骤见 `docs/方舟Seedance升级指南.md`（前端弹窗操作，无需改代码/重启）。
 
 > **为什么推荐 ark**：角色立绘多次生成不换脸、黑夜图真正基于白天图做图生图、视频 1~15s 任意时长、可原生带声音。模型名会随版本更新，**以方舟模型广场实际显示为准**。
 
@@ -208,7 +187,7 @@ VIDEO_TRIM=false
 | ark 模型名报错 | 模型 ID 以方舟模型广场详情页为准（版本号会更新） |
 | http 连通测试失败 | BaseURL 只填根地址（不要带 `/v1/...` 路径）；Token 检查是否多复制了空格 |
 | http 视频报 400 | 检查模型名是否完整（含组织前缀 `Wan-AI/...`）；特殊参数走高级设置附加字段 |
-| 换了配置不生效 | 前端保存后**重绘/重生成**即用新配置；新建任务自然用新配置；改 `.env` 需重启服务 |
+| 换了配置不生效 | 前端保存后**重绘/重生成**即用新配置；新建任务自然用新配置 |
 | 黑夜图生成按钮灰色 | cv 通道不支持图生图，属正常保护；切 ark/HTTP 通道即可基于白天图出黑夜 |
 
 ---
