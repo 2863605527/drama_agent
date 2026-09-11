@@ -53,8 +53,10 @@ header {
 }
 .title { font-size: 13.5px; font-weight: 600; }
 .title em { color: var(--text-3); font-style: normal; font-weight: 400; }
-.conn { margin-left: auto; font-size: 11.5px; color: var(--text-3); }
+.conn { margin-left: auto; font-size: 11.5px; color: var(--text-3); display: inline-flex; align-items: center; gap: 6px; }
+.conn::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
 .conn.on { color: var(--success); }
+.conn.on::before { background: var(--success); box-shadow: 0 0 0 3px rgba(34,197,94,.18); }
 .fold { background: none; border: none; color: var(--text-3); cursor: pointer; font-size: 12px; font-family: inherit; }
 .log-body {
   height: 200px; overflow-y: auto; padding: 10px 16px; background: #0b0d13;

@@ -165,23 +165,26 @@ onMounted(async () => {
 <style scoped>
 .sidebar {
   width: var(--sidebar-w); flex-shrink: 0; height: 100vh;
-  background: var(--bg-sidebar); border-right: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--bg-sidebar), #11141c);
+  border-right: 1px solid var(--border);
   display: flex; flex-direction: column;
 }
 .top { padding: 16px 14px 10px; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 14px; }
 .logo {
-  width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center;
+  width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center;
   font-size: 20px; background: var(--gradient);
+  box-shadow: 0 4px 12px rgba(99,102,241,.35), inset 0 1px 0 rgba(255,255,255,.2);
 }
-.brand-text strong { font-size: 15px; display: block; line-height: 1.3; }
+.brand-text strong { font-size: 15px; display: block; line-height: 1.3; letter-spacing: .3px; }
 .brand-text small { font-size: 11px; color: var(--text-3); }
 .new-btn {
   width: 100%; padding: 10px; border-radius: 10px; border: 1px dashed var(--border-strong);
   background: var(--primary-soft); color: #c7d2fe; cursor: pointer; font-size: 13.5px;
-  transition: all .18s; font-family: inherit;
+  transition: all .18s var(--ease, ease); font-family: inherit; font-weight: 500;
 }
-.new-btn:hover { background: rgba(99,102,241,.24); border-color: var(--primary); }
+.new-btn:hover { background: rgba(99,102,241,.24); border-color: var(--primary); transform: translateY(-1px); }
+.new-btn:active { transform: translateY(0) scale(.98); }
 .new-btn .plus { font-size: 15px; margin-right: 4px; }
 
 .conv-list { flex: 1; overflow-y: auto; padding: 6px 10px; }
@@ -195,10 +198,15 @@ onMounted(async () => {
 .conv-item {
   position: relative;
   padding: 10px 12px; border-radius: 10px; cursor: pointer; margin-bottom: 4px;
-  border: 1px solid transparent; transition: all .15s;
+  border: 1px solid transparent; transition: all .16s var(--ease, ease);
 }
-.conv-item:hover { background: var(--bg-hover); }
-.conv-item.active { background: var(--bg-active); border-color: var(--primary); }
+.conv-item:hover { background: var(--bg-hover); transform: translateX(2px); }
+.conv-item.active { background: var(--bg-active); border-color: rgba(99,102,241,.4); }
+/* 选中项左侧紫色指示条 */
+.conv-item.active::before {
+  content: ''; position: absolute; left: -10px; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 60%; border-radius: 0 3px 3px 0; background: var(--gradient);
+}
 .conv-title {
   font-size: 13.5px; color: var(--text); white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis; margin-bottom: 6px; padding-right: 58px;
@@ -228,8 +236,9 @@ onMounted(async () => {
   width: 100%; display: flex; align-items: center; gap: 9px; text-align: left;
   background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
   padding: 9px 11px; cursor: pointer; margin-bottom: 8px; color: var(--text); font-family: inherit;
+  transition: all .18s var(--ease, ease);
 }
-.channel-entry:hover { border-color: var(--primary); background: var(--bg-hover); }
+.channel-entry:hover { border-color: rgba(99,102,241,.5); background: var(--bg-hover); }
 .ci-icon { font-size: 16px; }
 .ci-text { flex: 1; min-width: 0; }
 .ci-text strong { font-size: 12.5px; display: block; }
@@ -237,11 +246,13 @@ onMounted(async () => {
   font-size: 10.5px; color: var(--text-3); display: block; white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; margin-top: 1px;
 }
-.ci-arrow { color: var(--text-3); font-size: 16px; }
+.ci-arrow { color: var(--text-3); font-size: 16px; transition: transform .18s; }
+.channel-entry:hover .ci-arrow { transform: translateX(2px); color: var(--primary); }
 .user-line { display: flex; align-items: center; gap: 9px; padding: 4px 6px; }
 .avatar {
   width: 32px; height: 32px; border-radius: 50%; background: var(--gradient);
   display: grid; place-items: center; font-weight: 700; font-size: 14px; color: #fff;
+  box-shadow: 0 3px 9px rgba(99,102,241,.35), inset 0 1px 0 rgba(255,255,255,.22);
 }
 .user-name { flex: 1; font-size: 13.5px; }
 .logout {

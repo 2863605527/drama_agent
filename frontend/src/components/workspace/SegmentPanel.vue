@@ -207,7 +207,8 @@ h3 { font-size: 15px; }
 .head-right { display: flex; align-items: center; gap: 12px; }
 .audio-pick { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-2); }
 .audio-pick .input { width: auto; padding: 6px 10px; }
-.seg { border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 14px; background: var(--bg-app); }
+.seg { border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 14px; background: var(--bg-app); transition: border-color .18s, box-shadow .18s; }
+.seg:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
 .seg-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
 .seg-name { font-size: 14px; }
 .seg-shots { font-size: 12px; color: var(--text-3); }
@@ -230,8 +231,10 @@ h3 { font-size: 15px; }
 /* 片段唯一视频区 */
 .seg-video video { width: 100%; max-height: 380px; border-radius: 10px; background: #000; display: block; }
 .quality-warn {
-  margin-top: 6px; padding: 6px 10px; border-radius: 8px; font-size: 12.5px; line-height: 1.5;
-  color: #b25e09; background: #fdf3e3; border: 1px solid #f0c98a;
+  margin-top: 8px; padding: 8px 12px; border-radius: 8px; font-size: 12.5px; line-height: 1.5;
+  display: flex; align-items: center; gap: 6px;
+  color: #fcd34d; background: rgba(245,158,11,.1);
+  border: 1px solid rgba(245,158,11,.32);
 }
 .sv-empty {
   width: 100%; min-height: 96px; display: grid; place-items: center; padding: 16px;

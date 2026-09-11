@@ -162,6 +162,11 @@ async function submit() {
   border-radius: 50%;
   filter: blur(80px);
   opacity: 0.35;
+  animation: orb-drift 16s ease-in-out infinite alternate;
+}
+@keyframes orb-drift {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(30px, 24px) scale(1.08); }
 }
 .orb1 {
   width: 420px;
@@ -176,6 +181,7 @@ async function submit() {
   background: #8b5cf6;
   bottom: -120px;
   right: -60px;
+  animation-delay: -6s;
 }
 .orb3 {
   width: 260px;
@@ -184,6 +190,7 @@ async function submit() {
   top: 50%;
   left: 60%;
   opacity: 0.18;
+  animation-delay: -3s;
 }
 
 .login-card {
@@ -199,10 +206,10 @@ async function submit() {
   max-width: 92vw;
   background: rgba(26, 30, 41, 0.82);
   backdrop-filter: blur(18px);
-  border: 1px solid var(--border-strong);
+  border: 1px solid rgba(139,146,180,.22);
   border-radius: 18px;
   padding: 34px 32px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,.06);
 }
 .brand {
   display: flex;
@@ -218,6 +225,7 @@ async function submit() {
   place-items: center;
   font-size: 28px;
   background: var(--gradient);
+  box-shadow: 0 8px 20px rgba(99,102,241,.42), inset 0 1px 0 rgba(255,255,255,.22);
 }
 .brand h1 {
   font-size: 21px;
@@ -250,9 +258,10 @@ async function submit() {
   font-family: inherit;
 }
 .tabs button.active {
-  background: var(--bg-active);
-  color: var(--text);
+  background: var(--gradient);
+  color: #fff;
   font-weight: 600;
+  box-shadow: 0 3px 10px rgba(99,102,241,.35);
 }
 
 .field {

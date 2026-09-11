@@ -245,9 +245,11 @@ h3 { font-size: 15px; }
 .sub { font-size: 12px; color: var(--text-3); }
 .group-title { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 16px 0 10px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
-.asset { background: var(--bg-app); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.asset { background: var(--bg-app); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; transition: border-color .18s, box-shadow .18s, transform .18s; }
+.asset:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); transform: translateY(-2px); }
 .img-box { position: relative; aspect-ratio: 3/4; background: #0b0d13; }
-.img-box img { width: 100%; height: 100%; object-fit: cover; }
+.img-box img { width: 100%; height: 100%; object-fit: cover; animation: img-fade .3s ease both; }
+@keyframes img-fade { from { opacity: 0; transform: scale(1.02); } to { opacity: 1; transform: none; } }
 .placeholder { width: 100%; height: 100%; display: grid; place-items: center; color: var(--text-3); font-size: 12.5px; }
 .img-actions {
   position: absolute; inset: auto 0 0 0; display: flex; gap: 6px; padding: 8px;

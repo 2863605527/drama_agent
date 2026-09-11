@@ -161,26 +161,37 @@ onBeforeUnmount(() => taskStore.closeStream())
 .welcome { flex: 1; overflow-y: auto; display: grid; place-items: center; padding: 40px 20px; }
 .welcome-inner { width: 720px; max-width: 100%; }
 .hero-logo {
-  width: 72px; height: 72px; border-radius: 20px; background: var(--gradient);
-  display: grid; place-items: center; font-size: 40px; margin: 0 auto 18px;
+  width: 76px; height: 76px; border-radius: 22px; background: var(--gradient);
+  display: grid; place-items: center; font-size: 42px; margin: 0 auto 18px;
+  box-shadow: 0 12px 32px rgba(99,102,241,.42), inset 0 1px 0 rgba(255,255,255,.22);
+  animation: hero-float 4s ease-in-out infinite;
 }
-.welcome-inner h1 { text-align: center; font-size: 28px; margin-bottom: 10px; }
+@keyframes hero-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+.welcome-inner h1 {
+  text-align: center; font-size: 30px; margin-bottom: 10px; letter-spacing: .5px;
+  background: linear-gradient(120deg, #fff 30%, #c7d2fe 70%, #ddd6fe);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
 .slogan { text-align: center; color: var(--text-2); font-size: 14px; margin-bottom: 28px; }
 .welcome-composer { margin-bottom: 26px; }
 .features { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .feat {
-  text-align: center; padding: 14px 8px; font-size: 12.5px; color: var(--text-2);
-  background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+  text-align: center; padding: 16px 8px; font-size: 12.5px; color: var(--text-2);
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+  transition: all .2s var(--ease, ease);
 }
+.feat:hover { transform: translateY(-3px); border-color: rgba(99,102,241,.45); background: var(--bg-card-2); box-shadow: var(--shadow); }
 .feat span { display: block; font-size: 20px; margin-bottom: 6px; }
 
 /* 执行栏 */
 .ws-header {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--bg-sidebar);
+  padding: 14px 24px; border-bottom: 1px solid var(--border);
+  background: rgba(20,23,31,.82); backdrop-filter: blur(10px);
+  position: sticky; top: 0; z-index: 20;
 }
 .ws-title { display: flex; align-items: center; gap: 12px; }
-.ws-title h2 { font-size: 17px; font-weight: 600; max-width: 520px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-title h2 { font-size: 17px; font-weight: 600; max-width: 520px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: .3px; }
 .ws-actions { display: flex; align-items: center; gap: 12px; }
 .task-id { font-size: 11.5px; color: var(--text-3); font-family: Consolas, monospace; }
 .ws-body { flex: 1; overflow-y: auto; padding: 20px 24px 60px; display: flex; flex-direction: column; gap: 16px; max-width: 1080px; width: 100%; margin: 0 auto; }
