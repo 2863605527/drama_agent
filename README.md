@@ -445,18 +445,30 @@ docker compose logs -f celery-worker        # 看 worker 消费
 
 ## 备份与恢复
 
-`scripts/backup.ps1` 一键全量备份（Windows + Docker 环境）：
+一键全量备份，Windows 与 Linux 各一个脚本（逻辑一致）：
+
+**Windows + Docker**：`scripts/backup.ps1`
 
 ```bash
 powershell -ExecutionPolicy Bypass -File scripts\backup.ps1            # 默认保留最近 7 天
 powershell -ExecutionPolicy Bypass -File scripts\backup.ps1 -DaysToKeep 14
 ```
 
+**Linux 服务器 + Docker**：`scripts/backup.sh`
+
+```bash
+bash scripts/backup.sh                          # 默认保留最近 7 天
+DAYS_TO_KEEP=14 bash scripts/backup.sh
+DRAMA_MYSQL_PWD=xxx bash scripts/backup.sh      # 密码走环境变量，不写死
+# crontab -e 每天 03:00：
+# 0 3 * * * cd /opt/drama_agent && bash scripts/backup.sh >> logs/backup.log 2>&1
+```
+
 - 备份内容：① MySQL `drama_agent` 库（容器内 mysqldump+gzip 后 `docker cp` 出来，避免管道损坏二进制）
   → `backups/mysql/drama_<时间戳>.sql.gz`；② 全部媒体素材 `assets/` → `backups/assets/assets_<时间戳>.tar.gz`；
-- 恢复：`gunzip -c drama_*.sql.gz | docker exec -i drama-mysql mysql -udrama -pdrama_2024 drama_agent`；
+- 恢复：`gunzip -c drama_*.sql.gz | docker exec -i drama-mysql mysql -udrama -p drama_agent`；
   `tar -xzf assets_*.tar.gz -C <项目根>`；
-- 定时备份示例：`schtasks /Create /TN "DramaAgentBackup" /SC DAILY /ST 03:00 /TR "powershell -ExecutionPolicy Bypass -File F:\AI学习\drama_agent\scripts\backup.ps1" /F`；
+- Windows 定时备份示例：`schtasks /Create /TN "DramaAgentBackup" /SC DAILY /ST 03:00 /TR "powershell -ExecutionPolicy Bypass -File F:\AI学习\drama_agent\scripts\backup.ps1" /F`；
 - `backups/` 已加入 `.gitignore`，不入库。
 
 ## 文档索引（docs/）

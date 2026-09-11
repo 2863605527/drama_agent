@@ -1,3 +1,22 @@
+# ============================================================
+# 阶段 1：构建前端（Vue3 + Vite）。产出 frontend/dist
+# 服务器 git clone 后无需本机安装 Node，镜像内完成前端构建
+# ============================================================
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /fe
+
+# 先拷依赖清单利用缓存层；npm ci 按 package-lock.json 精确安装
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+# 拷源码并构建（.dockerignore 已排除 node_modules/.vite）
+COPY frontend/ ./
+RUN npm run build
+
+# ============================================================
+# 阶段 2：Python 运行时
+# ============================================================
 FROM python:3.11-slim
 
 # 系统依赖：curl 用于健康检查；ffmpeg 由 imageio-ffmpeg 自带，无需系统安装
@@ -18,6 +37,9 @@ RUN if [ -f requirements.lock ]; then \
 
 # 复制应用代码
 COPY . .
+
+# 用阶段 1 构建出的前端产物覆盖（保证镜像内一定有最新 dist，不依赖宿主机是否 build 过）
+COPY --from=frontend-builder /fe/dist ./frontend/dist
 
 # 运行时目录（通过 volume 挂载到宿主机持久化）
 RUN mkdir -p assets storage logs
