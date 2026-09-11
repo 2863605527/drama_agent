@@ -1,17 +1,70 @@
-# Python 缓存文件（你说的 __pycache__）
+# ===== Python 缓存 =====
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
 
-# 环境变量文件（你说的 .env）
+# ===== 虚拟环境 =====
+.venv/
+venv/
+env/
+
+# ===== 环境变量（含密钥，禁止提交）=====
 .env
 .env.local
 .env.*.local
 
-# 常见的 IDE 和系统垃圾文件（顺手帮你加上）
+# ===== IDE / 系统 =====
 .vscode/
 .idea/
 .DS_Store
+Thumbs.db
+
+# ===== 日志 =====
+logs/
 *.log
-.workbuddy/
+
+# ===== 运行时产物（挂载持久化，不入库）=====
+node_modules/
 assets/
+storage/
+*.db
+*.sqlite
+*.sqlite3
+celerybeat-schedule
+celerybeat.pid
+*.mp4
+*.wav
+*.mp3
+
+# ===== 工具目录 =====
+.workbuddy/
+
+# ===== 测试 / 覆盖率 =====
+.coverage
+htmlcov/
+outputs/
+
+# ===== 前端构建产物（clone 后需在 frontend/ 执行 npm install && npm run build）=====
+frontend/dist/
+frontend/.vite/
+frontend/node_modules/
+
+# ===== 打包归档 / 临时排查文件（不入库）=====
+*.zip
+/_*.png
+/_*.jpg
+/_*.txt
+/_*.py
+
+# ===== 本地 SQLite（线上坚持 Docker MySQL，此为本地 pytest/调试残留）=====
+drama_agent.db
+*.sqlite-journal
+
+# ===== 数据库/资产备份（backup.ps1 产物，体积大不入库）=====
+backups/

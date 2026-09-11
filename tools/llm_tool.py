@@ -13,8 +13,9 @@ load_dotenv()
 LLM_API_URL = os.getenv("LLM_API_URL", "https://api.deepseek.com").rstrip("/")
 # API Key（LLM_API_KEY 优先，兼容旧变量 DEEPSEEK_API_KEY）
 LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY")
-# 模型名称：deepseek-chat / deepseek-reasoner / moonshot-v1-8k / qwen-plus 等
-LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-v4-pro")
+# 模型名称：DeepSeek 官方为 deepseek-chat(V3)/deepseek-reasoner(R1)；
+# 第三方 OpenAI 兼容中转(Kimi/Qwen/vLLM 等)请在 .env 用 LLM_MODEL 配合对应 LLM_API_URL 覆盖
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-v4-flash")
 # 默认温度
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.7"))
 # 空响应 / 网络异常重试次数（DeepSeek 等偶发 HTTP 200 + body=0）
@@ -43,6 +44,10 @@ def llm_chat(messages: list, temperature: float = None) -> str:
     for attempt in range(1, LLM_MAX_RETRIES + 1):
         try:
             resp = requests.post(url, json=payload, headers=headers, timeout=120)
+            if resp.status_code in (401, 403):
+                raise RuntimeError(
+                    f"HTTP {resp.status_code} 鉴权失败：当前 LLM_API_KEY 在 {LLM_API_URL} 不被认可"
+                    f"（官方 Key 请核对是否复制正确/是否被禁用；第三方中转 Key 必须把 LLM_API_URL 改成中转地址）。上游返回：{resp.text[:150]}")
             if resp.status_code >= 500:
                 raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:120]}")
             resp.raise_for_status()

@@ -16,6 +16,7 @@ class Character(BaseModel):
     name: str
     description: str
     reference_image: Optional[str] = None
+    inherited: Optional[bool] = False  # 是否从上一集继承（已有立绘，无需重新生成）
 
 class Scene(BaseModel):
     """场景：剧本中出现的独立场景，用于生成场景图（白天 / 黑夜两版）。
@@ -24,6 +25,7 @@ class Scene(BaseModel):
     description: str  # 纯场景环境描述（无人物，含地点、时间、光线、氛围、主要物件）
     day_image_url: Optional[str] = None
     night_image_url: Optional[str] = None
+    inherited: Optional[bool] = False  # 是否从上一集继承（已有昼夜图，无需重新生成）
 
 class Shot(BaseModel):
     shot_id: str
@@ -47,6 +49,7 @@ class Segment(BaseModel):
     duration: int = 0  # 片段总时长（秒）= 段内各分镜时长之和
     scene_key: Optional[str] = None  # 片段主场景
     video_url: Optional[str] = None  # 片段视频本地 URL
+    quality_warning: Optional[str] = None  # 出片后 ffprobe 质量复核告警（时长偏差/无声），空表示正常
 
 class UpdateScriptRequest(BaseModel):
     """剧本编辑：标题 / 原始剧本内容"""
@@ -108,10 +111,27 @@ class DramaTask(BaseModel):
     script: Optional[DramaScript] = None
     final_video_url: Optional[str] = None
     audio_mode: Optional[str] = "auto"  # 配音方式：auto（按通道自动：ark 原生 / cv 走 TTS）/ native（强制原生）/ tts（强制 TTS）
+    user_id: Optional[int] = None  # 所属用户 ID（MySQL 持久化用）
+    # 运行时通道配置快照（用户在前端选择的 LLM/图片/视频通道、模型、Key，已解密明文）。
+    # 不写入 script_data：由 tasks.channel_config 列单独持久化，任务重建时恢复。
+    channel_profile: Optional[dict] = None
+    # —— 多集续写（系列剧）——
+    parent_id: Optional[str] = None      # 系列根任务（第一集）的 task_id；第一集为 None
+    episode_no: int = 1                  # 本任务是第几集（从 1 开始）
+    series_title: Optional[str] = None   # 系列剧名（跨集一致，用于左侧列表/标题展示）
+    # 续写上下文（仅创建当次解析时使用：父集角色/场景资产，不落独立列、不影响前端）
+    inherit_context: Optional[dict] = None
+    # 持久化执行日志（[{seq,message}]）：刷新页面 / 服务重启后仍可回显，SSE 只做增量
+    logs: Optional[List[dict]] = Field(default_factory=list)
 
 class SubmitDramaRequest(BaseModel):
-    user_prompt: str
+    user_prompt: str = Field(..., min_length=1, max_length=2000, description="创意描述")
     style: Optional[str] = "anime"
+
+class EpisodeRequest(BaseModel):
+    """在某一集基础上续写下一集：描述本集剧情走向，自动继承已有角色/场景资产。"""
+    user_prompt: str = Field(..., min_length=1, max_length=2000, description="本集剧情走向")
+    style: Optional[str] = None
 
 class HumanReviewConfirm(BaseModel):
     task_id: str

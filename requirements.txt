@@ -1,9 +1,39 @@
-fastapi>=0.110.0
-uvicorn>=0.29.0
-requests>=2.31.0
-python-dotenv>=1.0.0
-pydantic>=2.6.0
-pymilvus>=2.4.0
-mcp>=1.0.0
+# ===== Web 框架 =====
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.29
+gunicorn>=21.2
+python-multipart>=0.0.9
+
+# ===== 配置与校验 =====
+pydantic>=2.6
+pydantic-settings>=2.2
+python-dotenv>=1.0
+
+# ===== 数据库 =====
+sqlalchemy>=2.0
+aiomysql>=0.2
+alembic>=1.13
+
+# ===== 鉴权 =====
+pyjwt>=2.8
+passlib>=1.7
+cryptography>=42.0   # 用户通道 Key 落库对称加密（Fernet）
+
+# ===== 业务能力 =====
+requests>=2.31
+httpx>=0.27
+mcp>=1.0,<2
 volcengine>=1.0.100
 imageio-ffmpeg>=0.5.1
+edge-tts>=6.1.0
+
+# ===== 可观测性（可选，缺失时代码自动降级）=====
+prometheus-client>=0.20
+sentry-sdk>=2.0
+
+# ===== 异步任务队列（可选：USE_CELERY=true 时启用，需 Redis）=====
+celery>=5.3
+redis>=5.0
+
+# ===== RAG 预留（未接入主流程，不用向量库可注释掉以减小镜像）=====
+pymilvus>=2.4

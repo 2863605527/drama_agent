@@ -1,15 +1,34 @@
-from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import StreamingResponse, Response, JSONResponse
+"""应用入口：组装 lifespan / 中间件 / 异常处理 / 路由 / 静态托管。
+
+业务接口按类拆分在 api/ 包：
+- api/system.py       运维：/health /metrics
+- api/auth.py         认证：/api/auth/*
+- api/channels.py     通道配置：/api/channels/meta /api/user/channel-* 
+- api/tasks.py        任务业务：/api/task/*（创建/查询/审核/资产/编辑/合成）
+- api/task_stream.py  SSE 进度流：/api/task/stream/{task_id}
+路由通过 api/__init__.py 的 register_routers() 统一注册，注册顺序必须在 SPA 托管之前。
+"""
+import os
+import time
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from schema.drama_schema import SubmitDramaRequest, HumanReviewConfirm, DramaTask, RegenerateRequest, UpdateCharacterRequest, UpdateShotRequest, UpdateSceneRequest, ComposeVideoRequest, UpdateScriptRequest, UpdateAudioModeRequest
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
+
+import api as api_routes
+from api import context
 from agent.drama_agent import DramaAgent
 from agent.progress_hub import progress_hub
+from core import metrics, observability
+from core.config import settings
+from db.database import init_db, engine
+from mcp_client.agent_mcp_client import mcp_client
+from tasks.asset_gc import gc_orphan_assets
+from tasks.reconcile import reconcile_on_startup
 from tools.logger_tool import get_logger
-import os
-import asyncio
-import json
-import uuid
 
 logger = get_logger("drama.api")
 
@@ -23,8 +42,114 @@ class NoCacheStaticFiles(StaticFiles):
         response.headers["Expires"] = "0"
         return response
 
-app = FastAPI(title="Drama‑Agent 小云雀复刻项目")
-agent = DramaAgent()
+
+class CacheStaticFiles(StaticFiles):
+    """/assets 媒体资源托管（P2-7）。
+
+    - images/、uploads/ 的文件名是 uuid（内容变则 URL 变，天然不可变）→ 长缓存 immutable，
+      重复浏览/生成预览不再重复下载大图；
+    - videos/、audio/、final/ 按 task_id 命名，任务重跑会覆盖同名文件（URL 不变内容变）→
+      保持 no-cache，避免用户看到旧成片/旧片段。
+    """
+    _IMMUTABLE_PREFIXES = ("images/", "uploads/")
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if path.startswith(self._IMMUTABLE_PREFIXES) and response.status_code == 200:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return response
+
+
+class SPAStaticFiles(NoCacheStaticFiles):
+    """Vue 单页应用托管：静态文件存在则返回，否则回退 index.html（支持前端 history 路由刷新）。"""
+    async def get_response(self, path: str, scope):
+        from starlette.exceptions import HTTPException as StarletteHTTPException
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as e:
+            if e.status_code == 404:
+                return await super().get_response("index.html", scope)
+            raise
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期：启动初始化 + 优雅关闭"""
+    # ---------- startup ----------
+    for dirpath in ("assets", "assets/uploads", "assets/videos", "assets/final", "storage/milvus_db"):
+        os.makedirs(dirpath, exist_ok=True)
+    problems = settings.validate_required()
+    for p in problems:
+        logger.warning("CONFIG WARNING | %s", p)
+    observability.init_sentry()       # 配了 SENTRY_DSN 才启用，否则空操作
+    await init_db()
+    context.init_agent()
+    await context.agent.initialize()
+    # 启动对账：把重启前卡在解析阶段（pending）的任务标记失败，人工断点阶段任务保持可续
+    try:
+        rec = await reconcile_on_startup()
+        logger.info("startup reconcile done | stuck_failed=%d | resumable=%d",
+                    rec["failed"], rec["resumable"])
+        # 先把存量任务引用到的资产回填进 assets 元数据表（幂等、不移动文件），再做安全 GC
+        try:
+            from tasks.asset_store import backfill_all_assets
+            bf = await backfill_all_assets()
+            logger.info("startup asset backfill | tasks=%d | registered=%d",
+                        bf["tasks"], bf["registered"])
+        except Exception as be:
+            logger.error("startup asset backfill error: %s", be)
+        gc = await gc_orphan_assets()
+        if gc.get("removed") or gc.get("unregistered"):
+            logger.info("startup asset gc | removed=%d | freed=%.2fMB | unregistered_kept=%d",
+                        gc.get("removed", 0), gc.get("freed_mb", 0.0), gc.get("unregistered", 0))
+    except Exception as e:
+        logger.error("startup reconcile error: %s", e)
+    logger.info("startup complete | env=%s | port=%d", settings.environment, settings.app_port)
+    yield
+    # ---------- shutdown（优雅关闭：MCP 子进程连接 + DB 连接池）----------
+    logger.info("shutdown: closing mcp channels ...")
+    try:
+        await mcp_client.close()
+    except Exception as e:
+        logger.error("mcp close error: %s", e)
+    logger.info("shutdown: disposing database engine ...")
+    try:
+        await engine.dispose()
+    except Exception as e:
+        logger.error("engine dispose error: %s", e)
+    logger.info("shutdown complete")
+
+
+app = FastAPI(title="Drama-Agent 短剧生成系统", lifespan=lifespan)
+
+# ---------- CORS ----------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """安全响应头（P1-5）：CSP / nosniff / 防点击劫持 / 来源策略。
+    - CSP 需兼容 Vue 构建产物（外链 JS、内联样式）与 SSE、blob 视频、第三方图片；
+    - nosniff 强制浏览器按 Content-Type 解析，配合上传魔数校验阻断存储型 XSS。"""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob: https:; media-src 'self' blob: https:; "
+        "connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'; "
+        "base-uri 'self'; form-action 'self'")
+    return response
 
 
 @app.middleware("http")
@@ -34,6 +159,22 @@ async def add_no_cache_header(request: Request, call_next):
     if "Cache-Control" not in response.headers:
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return response
+
+
+@app.middleware("http")
+async def prometheus_http_metrics(request: Request, call_next):
+    """采集 HTTP 请求量与耗时（路径模板归一化，避免 task_id 造成高基数标签）。"""
+    start = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        return response
+    finally:
+        cost = time.perf_counter() - start
+        path = metrics.normalize_path(request)
+        metrics.HTTP_LATENCY.labels(request.method, path).observe(cost)
+        metrics.HTTP_REQUESTS.labels(request.method, path, str(status)).inc()
 
 
 @app.exception_handler(RequestValidationError)
@@ -48,25 +189,17 @@ async def _validation_zh(request: Request, exc: RequestValidationError):
         field = ".".join(str(x) for x in loc_list[1:]) if len(loc_list) > 1 else str(loc_list[0] or "")
         typ = e.get("type", "")
         raw_msg = e.get("msg", "")
-        # 翻译缺失字段
         if typ == "missing":
             msgs.append(f"缺少必填字段「{field or '未知'}」")
-        # 翻译 Pydantic v2 类型错误（typ 形如 string_type / int_type / bool_type ...）
         elif typ.endswith("_type") or typ == "type_error":
             base = typ.replace("_type", "").replace("type_error.", "").lower()
             type_map = {
-                "string": "应为字符串",
-                "str": "应为字符串",
-                "integer": "应为整数",
-                "int": "应为整数",
-                "float": "应为数字",
-                "number": "应为数字",
-                "boolean": "应为布尔值(true/false)",
-                "bool": "应为布尔值(true/false)",
-                "list": "应为数组",
-                "array": "应为数组",
-                "dict": "应为对象",
-                "object": "应为对象",
+                "string": "应为字符串", "str": "应为字符串",
+                "integer": "应为整数", "int": "应为整数",
+                "float": "应为数字", "number": "应为数字",
+                "boolean": "应为布尔值(true/false)", "bool": "应为布尔值(true/false)",
+                "list": "应为数组", "array": "应为数组",
+                "dict": "应为对象", "object": "应为对象",
             }
             tip = type_map.get(base, f"类型不合法（{raw_msg or typ}）")
             msgs.append(f"字段「{field}」{tip}")
@@ -89,137 +222,47 @@ async def _validation_zh(request: Request, exc: RequestValidationError):
 
 @app.exception_handler(Exception)
 async def _unhandled_zh(request: Request, exc: Exception):
-    """兜底：把未处理异常翻译成友好中文，前端直接展示"""
-    msg = str(exc) or exc.__class__.__name__
-    if len(msg) > 300:
-        msg = msg[:300] + "…"
-    return JSONResponse(status_code=500, content={"detail": f"服务器内部错误：{msg}"})
-
-os.makedirs("./assets", exist_ok=True)
-os.makedirs("./assets/uploads", exist_ok=True)
-os.makedirs("./assets/videos", exist_ok=True)
-os.makedirs("./assets/final", exist_ok=True)
-os.makedirs("./storage/milvus_db", exist_ok=True)
-app.mount("/static", NoCacheStaticFiles(directory="static"), name="static")
-app.mount("/assets", NoCacheStaticFiles(directory="assets"), name="assets")
-
-@app.post("/api/task/submit", response_model=DramaTask)
-async def submit_task(req: SubmitDramaRequest):
-    logger.info("POST /submit | style=%s | prompt=%s…", req.style, req.user_prompt[:60])
-    task = await agent.submit_new_task(req.user_prompt, req.style or "anime")
-    logger.info("task created: %s", task.task_id)
-    return task
-
-@app.post("/api/task/review", response_model=DramaTask|None)
-async def human_review(req: HumanReviewConfirm):
-    return await agent.human_review_handle(req)
-
-@app.get("/api/task/{task_id}", response_model=DramaTask|None)
-async def get_task_info(task_id: str):
-    return agent.get_task(task_id)
-
-@app.post("/api/task/{task_id}/replace_image", response_model=DramaTask|None)
-async def replace_image(task_id: str, target_type: str = Form(...), target_id: str = Form(...), file: UploadFile = File(...)):
-    """手动替换角色形象图 / 场景图（昼夜）：上传本地图片文件"""
-    content = await file.read()
-    if not content:
-        raise Exception("上传文件为空")
-    ext = os.path.splitext(file.filename or "")[1].lower() or ".png"
-    if ext not in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
-        ext = ".png"
-    fname = f"{uuid.uuid4().hex}{ext}"
-    path = os.path.join("assets", "uploads", fname)
-    with open(path, "wb") as f:
-        f.write(content)
-    url = f"/assets/uploads/{fname}"
-    return await agent.replace_image(task_id, target_type, target_id, url)
-
-@app.post("/api/task/{task_id}/regenerate", response_model=DramaTask|None)
-async def regenerate(task_id: str, req: RegenerateRequest):
-    """失败重试：重新生成角色图 / 场景图（昼夜）/ 片段视频"""
-    logger.info("POST /regenerate | task=%s | %s:%s", task_id, req.target_type, req.target_id)
-    return await agent.regenerate(task_id, req.target_type, req.target_id)
-
-@app.post("/api/task/{task_id}/update_character", response_model=DramaTask|None)
-async def update_character(task_id: str, req: UpdateCharacterRequest):
-    """手动编辑角色姓名 / 性格详情"""
-    return await agent.update_character(task_id, req.char_id, req.name, req.description)
-
-@app.post("/api/task/{task_id}/update_scene", response_model=DramaTask|None)
-async def update_scene(task_id: str, req: UpdateSceneRequest):
-    """手动编辑场景环境描述（重新生成场景图时生效）"""
-    return await agent.update_scene(task_id, req.scene_key, req.description)
-
-@app.post("/api/task/{task_id}/update_audio_mode", response_model=DramaTask|None)
-async def update_audio_mode(task_id: str, req: UpdateAudioModeRequest):
-    """切换配音方式：auto（按通道自动）/ native（强制原生音频）/ tts（强制 TTS 配音）"""
-    return await agent.update_audio_mode(task_id, req.audio_mode)
-
-@app.post("/api/task/{task_id}/update_shot", response_model=DramaTask|None)
-async def update_shot(task_id: str, req: UpdateShotRequest):
-    """手动编辑分镜文案 / 镜头 / 光影 / 画面描述 prompt（时长由大模型自动分配）"""
-    return await agent.update_shot(task_id, req.shot_id, req.content, req.camera, req.lighting, req.prompt)
-
-@app.post("/api/task/{task_id}/update_script", response_model=DramaTask|None)
-async def update_script(task_id: str, req: UpdateScriptRequest):
-    """手动编辑剧本标题与原始剧本内容"""
-    logger.info("POST /update_script | task=%s | title=%s", task_id, req.title)
-    return await agent.update_script(task_id, req.title, req.raw_content)
-
-@app.post("/api/task/{task_id}/compose_video", response_model=DramaTask|None)
-async def compose_video(task_id: str, req: ComposeVideoRequest):
-    """将全部分镜视频合成为一个完整短剧视频（后台执行，进度走 SSE）"""
-    logger.info("POST /compose_video | task=%s", task_id)
-    # 前置校验：门槛不满足时直接返回 400 + 中文 detail（避免 200 假成功 + 长时间转圈）
-    task = agent.task_store.get(task_id)
-    if not task or not task.script:
-        raise HTTPException(status_code=404, detail="任务不存在或剧本尚未生成")
-    segs = task.script.segments or []
-    if segs:
-        total = len(segs)
-        generated = sum(1 for s in segs if s.video_url)
-    else:
-        total = len(task.script.shots)
-        generated = sum(1 for s in task.script.shots if s.video_url)
-    if generated < 2 and total > 1:
-        raise HTTPException(status_code=400, detail=f"目前仅生成 {generated}/{total} 个片段，至少生成 2 个片段才能合成（或全部生成后合成完整短剧）")
-    if total == 0:
-        raise HTTPException(status_code=400, detail="剧本为空，无法合成")
-    return await agent.compose_video(task_id)
-
-@app.get("/api/task/stream/{task_id}")
-async def task_stream(task_id: str):
-    """SSE 进度流：订阅任务流水线的实时进度事件"""
-    history, queue = await progress_hub.subscribe(task_id)
-
-    async def event_gen():
-        try:
-            # 先重放历史事件（客户端中途接入不丢进度）
-            for evt in history:
-                yield f"event: {evt['event']}\ndata: {json.dumps(evt, ensure_ascii=False)}\n\n"
-                if evt["event"] in ("done", "fail"):
-                    # 历史里已经有终态，继续守听后续手动操作事件
-                    continue
-            # 实时事件
-            while True:
-                try:
-                    evt = await asyncio.wait_for(queue.get(), timeout=15)
-                except asyncio.TimeoutError:
-                    yield ": keep-alive\n\n"
-                    continue
-                yield f"event: {evt['event']}\ndata: {json.dumps(evt, ensure_ascii=False)}\n\n"
-                # done/fail 只表示某个阶段结束，不关闭 SSE；
-                # 后续手动生成分镜视频、合成视频仍可能产生事件。
-        except asyncio.CancelledError:
-            # 客户端断开连接
-            pass
-
-    return StreamingResponse(
-        event_gen(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    """兜底异常处理（P1-4）：不向前端回传内部细节（可能含 SQL/路径/表名），
+    生成 trace id 便于日志定位，前端只看到通用提示+错误码。"""
+    import traceback
+    import uuid
+    trace_id = uuid.uuid4().hex[:8]
+    logger.error("unhandled error | trace=%s | path=%s | %s\n%s",
+                 trace_id, request.url.path, exc,
+                 "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"服务器内部错误，请稍后重试（错误码 {trace_id}）"},
     )
+
+
+# ---------- 业务路由（按类注册，必须在 SPA 托管之前） ----------
+api_routes.register_routers(app)
+
+# 静态资源（目录在 lifespan 中确保创建）
+app.mount("/static", NoCacheStaticFiles(directory="static"), name="static")
+# /assets：images/uploads 长缓存（uuid 文件名不可变），videos/audio/final 保持 no-cache
+app.mount("/assets", CacheStaticFiles(directory="assets"), name="assets")
+
+
+# ---------- 前端 Vue 工程构建产物托管（SPA） ----------
+# 构建命令：cd frontend && npm install && npm run build（产物输出到 frontend/dist）
+# 必须放在所有 /api 路由之后注册：未被 API/静态资源匹配的路径全部回退到 Vue 单页应用。
+_FRONTEND_DIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "dist")
+if os.path.isdir(_FRONTEND_DIST):
+    app.mount("/", SPAStaticFiles(directory=_FRONTEND_DIST, html=True), name="frontend")
+    logger.info("Vue frontend dist mounted at / | %s", _FRONTEND_DIST)
+else:
+    @app.get("/")
+    async def _root_hint():
+        return JSONResponse(content={
+            "name": "Drama-Agent 短剧生成系统 API",
+            "frontend": "未检测到 frontend/dist 构建产物：开发期请用 `cd frontend && npm run dev`，"
+                        "或执行 `npm run build` 后由后端托管页面。旧版单页仍可访问 /static/index.html",
+            "docs": "/docs",
+        })
+
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8010, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=settings.app_port, reload=settings.debug)

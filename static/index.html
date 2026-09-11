@@ -517,6 +517,31 @@
 </head>
 <body>
 
+<!-- 登录/注册界面 -->
+<div id="authOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;">
+  <div style="background:#fff;border-radius:16px;padding:36px 40px;width:380px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:36px;">🎬</div>
+      <h2 style="margin:8px 0 4px;font-size:20px;color:#1a1a1a;">短剧 AI 工厂</h2>
+      <p style="margin:0;font-size:13px;color:#888;">登录后开始创作你的 AI 短剧</p>
+    </div>
+    <div id="authTabs" style="display:flex;border-bottom:2px solid #f0f0f0;margin-bottom:20px;">
+      <div id="tabLogin" style="flex:1;text-align:center;padding:10px 0;cursor:pointer;font-size:14px;font-weight:600;color:#4a6cf7;border-bottom:2px solid #4a6cf7;margin-bottom:-2px;">登录</div>
+      <div id="tabRegister" style="flex:1;text-align:center;padding:10px 0;cursor:pointer;font-size:14px;color:#999;">注册</div>
+    </div>
+    <div style="margin-bottom:14px;">
+      <label style="display:block;font-size:13px;color:#555;margin-bottom:6px;">用户名</label>
+      <input id="authUsername" type="text" placeholder="请输入用户名" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;box-sizing:border-box;outline:none;" onfocus="this.style.borderColor='#4a6cf7'" onblur="this.style.borderColor='#ddd'">
+    </div>
+    <div style="margin-bottom:20px;">
+      <label style="display:block;font-size:13px;color:#555;margin-bottom:6px;">密码</label>
+      <input id="authPassword" type="password" placeholder="请输入密码" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;box-sizing:border-box;outline:none;" onfocus="this.style.borderColor='#4a6cf7'" onblur="this.style.borderColor='#ddd'">
+    </div>
+    <button id="authSubmitBtn" onclick="doAuth()" style="width:100%;padding:12px;background:#4a6cf7;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;">登 录</button>
+    <div id="authError" style="color:#e74c3c;font-size:13px;margin-top:12px;text-align:center;min-height:18px;"></div>
+  </div>
+</div>
+
 <header>
   <div class="brand">
     <div class="brand-logo">🎬</div>
@@ -713,6 +738,62 @@
 <footer>Drama-Agent 剧本 / 角色立绘 / 场景图（昼夜） / 片段视频 / 完整短剧 全流程自动生成</footer>
 
 <script>
+/* ---------- 鉴权：token 管理与登录 ---------- */
+const TOKEN_KEY = "drama_token";
+const USER_KEY = "drama_username";
+let authMode = "login"; // login | register
+
+function getToken() { return localStorage.getItem(TOKEN_KEY) || ""; }
+function setToken(t, u) { localStorage.setItem(TOKEN_KEY, t); localStorage.setItem(USER_KEY, u); }
+function clearAuth() { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); }
+
+function switchAuthTab(mode) {
+  authMode = mode;
+  const tabL = document.getElementById("tabLogin");
+  const tabR = document.getElementById("tabRegister");
+  const btn = document.getElementById("authSubmitBtn");
+  if (mode === "login") {
+    tabL.style.color = "#4a6cf7"; tabL.style.borderBottom = "2px solid #4a6cf7";
+    tabR.style.color = "#999"; tabR.style.borderBottom = "none";
+    btn.textContent = "登 录";
+  } else {
+    tabR.style.color = "#4a6cf7"; tabR.style.borderBottom = "2px solid #4a6cf7";
+    tabL.style.color = "#999"; tabL.style.borderBottom = "none";
+    btn.textContent = "注 册";
+  }
+  document.getElementById("authError").textContent = "";
+}
+
+async function doAuth() {
+  const username = document.getElementById("authUsername").value.trim();
+  const password = document.getElementById("authPassword").value;
+  const errEl = document.getElementById("authError");
+  if (!username || !password) { errEl.textContent = "请输入用户名和密码"; return; }
+  errEl.textContent = "";
+  const url = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await resp.json();
+    if (!resp.ok) { errEl.textContent = data.detail || "操作失败"; return; }
+    setToken(data.access_token, data.username);
+    document.getElementById("authOverlay").style.display = "none";
+    // 登录后恢复任务
+    const saved = localStorage.getItem("drama_task_id");
+    if (saved) { currentTaskId = saved; restoreTask(saved); }
+  } catch (e) {
+    errEl.textContent = "网络错误：" + e.message;
+  }
+}
+
+function logout() {
+  clearAuth();
+  location.reload();
+}
+
 const baseUrl = "";
 let currentTaskId = null;
 let eventSource = null;
@@ -725,6 +806,16 @@ const seenSeqs = new Set(); // SSE 断线重连后去重用
 
 /* ---------- 页面加载时恢复任务 ---------- */
 window.addEventListener("DOMContentLoaded", () => {
+  // 绑定登录 tab 切换
+  document.getElementById("tabLogin").onclick = () => switchAuthTab("login");
+  document.getElementById("tabRegister").onclick = () => switchAuthTab("register");
+  document.getElementById("authPassword").addEventListener("keydown", (e) => { if (e.key === "Enter") doAuth(); });
+  // 检查登录状态
+  if (!getToken()) {
+    document.getElementById("authOverlay").style.display = "flex";
+    return;
+  }
+  document.getElementById("authOverlay").style.display = "none";
   const saved = localStorage.getItem("drama_task_id");
   if (saved) {
     currentTaskId = saved;
@@ -862,7 +953,7 @@ function setSubmitBusy(busy) {
 function openStream(taskId) {
   if (eventSource) { eventSource.close(); eventSource = null; }
   sseClosed = false;
-  eventSource = new EventSource(baseUrl + "/api/task/stream/" + taskId);
+  eventSource = new EventSource(baseUrl + "/api/task/stream/" + taskId + "?token=" + encodeURIComponent(getToken()));
   // 包装：断线重连后服务器会重放历史事件，用 seq 去重避免日志刷屏
   function onEvent(handler) {
     return (e) => {
@@ -1826,6 +1917,9 @@ function _translateClientError(s) {
 
 /* ---------- 统一 fetch 错误处理（中文提示） ---------- */
 async function fetchWithI18n(url, options = {}) {
+  options.headers = options.headers || {};
+  const token = getToken();
+  if (token) options.headers["Authorization"] = "Bearer " + token;
   let resp;
   try {
     resp = await fetch(url, options);
@@ -1852,7 +1946,11 @@ async function fetchWithI18n(url, options = {}) {
   const status = resp.status;
   let prefix = `请求失败（HTTP ${status}）`;
   if (status === 400) prefix = "请求参数错误";
-  else if (status === 401) prefix = "未授权：API Key 可能失效";
+  else if (status === 401) {
+    prefix = "登录已过期";
+    clearAuth();
+    if (document.getElementById("authOverlay")) document.getElementById("authOverlay").style.display = "flex";
+  }
   else if (status === 403) prefix = "无权限：账号可能未开通对应服务（火山 CV/ARK）";
   else if (status === 404) prefix = "接口不存在";
   else if (status === 422) prefix = "请求参数校验失败";
