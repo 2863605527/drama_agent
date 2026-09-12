@@ -48,6 +48,9 @@ celerybeat.pid
 # ===== 测试 / 覆盖率 =====
 .coverage
 htmlcov/
+# Playwright 产物（截图/trace/上下文）
+test-results/
+playwright-report/
 outputs/
 
 # ===== 前端构建产物（clone 后需在 frontend/ 执行 npm install && npm run build）=====

@@ -152,9 +152,10 @@ F:\python\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8010
 
 | 变量 | 必需 | 说明 |
 |---|---|---|
-| `JWT_SECRET_KEY` | 是 | 生产**必须**改为随机串，否则启动告警 |
+| `JWT_SECRET_KEY` | 是 | **生产必须**改为随机串（`openssl rand -hex 32`），否则 `ENVIRONMENT=production` 时**拒绝启动** |
 | `MYSQL_*` | 是 | 数据库连接，compose 已覆盖容器内地址为 `mysql` |
 | `DRAMA_DB` | 否 | 设为 `sqlite` 时用本地 SQLite（`./drama_agent.db`），免 MySQL 跑通/测试；不设则走 MySQL |
+| `ASSET_SIGN_DISABLED` | 否 | 设为 `1` 关闭 /assets 媒体签名（仅内网调试，生产禁用） |
 | `VOLC_ACCESS_KEY` / `VOLC_SECRET_KEY` | 否 | ⚠️ 仅兜底：**模型通道已改为前端手动配置**，.env 不配也能用（登录后弹窗填写） |
 | `LLM_API_KEY` / `LLM_MODEL` | 否 | ⚠️ 仅兜底：同上，正式配置入口是前端「模型通道」弹窗 |
 | `JWT_EXPIRE_MINUTES` | 否 | token 有效期（分钟），默认 1440 |
@@ -199,9 +200,12 @@ alembic revision --autogenerate -m "describe change"
 
 ## 测试
 
-测试用 SQLite 内存库，**不依赖真实 MySQL / LLM / 火山 / Redis / Celery**（外部能力全部 mock），共 144 个用例：
+后端测试用 SQLite 内存库，**不依赖真实 MySQL / LLM / 火山 / Redis / Celery**（外部能力全部 mock），共 **154** 个用例：
 
 - 安全与基建：密码哈希、JWT、限流器、配置校验、schema、注册登录、**越权拦截**、健康检查、LLM 双模式、**全局异常脱敏**（`test_error_masking.py`）；
+- **P0 吊销机制**（`test_token_revocation.py`）：改密/退出所有设备后旧 token 立即失效、新登录 token 有效、payload 版本号；
+- **P0 媒体签名**（`test_asset_signature.py`）：签名往返/篡改/过期拒绝、嵌套签名与去签名、`/assets` 路由无签名 403；
+- **MySQL 兼容**（`test_mysql_compat.py`，`-m mysql` 标记，本地无 MySQL 自动跳过，CI MySQL 矩阵运行）：建表、`token_version` 幂等补列、用户 CRUD 改密版本自增；
 - **用户通道配置接口**（`test_e2e_channel_api.py`）：元数据、空配置、保存加密、掩码回读、掩码沿用旧值、缺必填 400、媒体凭据校验、SPA 托管；MCP 工具 schema 的 profile 可空（`test_smoke_mcp_schema.py`）；
 - **MCP 通道**（`test_mcp_client.py`）：持久连接只 initialize 一次、断线自动重建重试、poll JSON 解析与坏 JSON 兜底、参数序列化；
 - **图片通道连接池**（`test_channel_pool.py`）：池接口与单通道同构、并发请求分发到不同子进程、超池排队、池大小跟随 `IMAGE_MAX_CONCURRENCY`；
@@ -224,6 +228,13 @@ pytest -q
 
 # Windows PowerShell（指定项目解释器 + SQLite）
 $env:DRAMA_DB="sqlite"; F:\python\python.exe -m pytest tests -q -p no:cacheprovider
+
+# 前端单测（Vitest，frontend/ 目录下）
+npm test
+
+# E2E 冒烟（Playwright，需后端已启动 + 浏览器已装）
+npx playwright install chromium      # 首次
+npx playwright test                 # 在 e2e/ 目录执行
 ```
 
 > 端到端测试曾抓出一个真实并发缺陷：视频并发信号量 `_VIDEO_SLOT` 双重 acquire 泄漏许可，
@@ -231,14 +242,16 @@ $env:DRAMA_DB="sqlite"; F:\python\python.exe -m pytest tests -q -p no:cacheprovi
 
 ## CI/CD（GitHub Actions）
 
-`.github/workflows/ci.yml` 在 push / PR 时运行三个 job：
+`.github/workflows/ci.yml` 在 push / PR 时运行五个 job：
 
-1. **test**：装依赖 → `compileall` 语法检查 → `pytest`（SQLite 内存，无需外部服务）；
-2. **skill-test**：跑可移植技能包 `drama_director_skill` 的零 Key 自测；
-3. **docker**：依赖前两个通过后，buildx 构建镜像；PR 只构建不推，push 到分支/tag 时登录 GHCR 并推送
+1. **test**：装依赖 → `compileall` 语法检查 → `pytest`（SQLite 内存，无需外部服务，`-m "not mysql"`）；
+2. **test-mysql**（P1-6 矩阵）：起 MySQL 8 service，跑 `pytest -m mysql` 验证建表 / 幂等补列 / CRUD 兼容；
+3. **frontend**：`npm ci` → Vitest 单测 → `npm run build`；
+4. **e2e**（P1-7）：构建前端 + 起后端（SQLite）→ Playwright 冒烟（注册 → 工作台 → 未配置拦截 → 通道教程）；
+5. **docker**：依赖前四个全部通过后，buildx 构建镜像；PR 只构建不推，push 到分支/tag 时登录 GHCR 并推送
    `ghcr.io/<owner>/drama-agent`（标签：分支名 / semver / `sha-短哈希` / 默认分支 `latest`），带 GHA 层缓存。
 
-同一分支新推送自动取消旧运行（`concurrency`）。Fork/本地无需任何 secret 即可跑前两个 job。
+同一分支新推送自动取消旧运行（`concurrency`）。Fork/本地无需任何 secret 即可跑前四个 job。
 
 ## 生产部署（只配环境，不改代码）
 
@@ -275,6 +288,14 @@ $env:DRAMA_DB="sqlite"; F:\python\python.exe -m pytest tests -q -p no:cacheprovi
 - **CORS 收敛（P1-6）**：默认仅允许本地开发白名单（127.0.0.1:5173/8010 等），不再接受 `*` 通配；生产在 `.env` 配 `CORS_ORIGINS` 实际域名。
 - **Adminer 默认不启动（P1-7）**：`docker-compose.yml` 中 adminer 走 `profiles: ["adminer"]`，需要时 `docker compose --profile adminer up -d`，避免把数据库管理面板暴露在默认端口。
 - **指标不再失真（P0-2）**：任务状态指标仅在 DB 状态真实变化时自增（`agent/drama_agent.py::_save_task`）。
+- **生产 JWT 密钥强制（P0-3）**：`ENVIRONMENT=production` 下 JWT_SECRET_KEY 为空/占位/过短直接拒绝启动（`core/config.py`），
+  docker-compose 默认注入一个内置随机串仅供本地快速起，**生产必须用 `openssl rand -hex 32` 覆盖**。
+- **JWT 吊销（P0-1）**：`users.token_version` 随改密 / `POST /api/auth/logout-all` 自增，旧 token 立即失效（401「登录状态已失效」）；
+  新增 `POST /api/auth/change-password`（校验旧密码后全端下线）。
+- **媒体访问签名（P0-2）**：后端下发所有 `/assets/...` URL 附加 HMAC 签名（7 天有效），静态路由对无签名/过期/篡改请求返回 403，
+  防未授权遍历与盗链；存储与生成链路保持相对路径（参考图转 base64 不受影响）。内网调试可用 `ASSET_SIGN_DISABLED=1` 整体关闭（生产禁用）。
+- **审计日志（P2-11）**：`audit_logs` 表记录注册/登录（含失败）/改密/登出全部设备/删除任务/保存通道等关键事件（不含敏感值），
+  用 SQL 查询 `SELECT * FROM audit_logs ORDER BY id DESC LIMIT 100;` 追溯。
 
 ## MCP 说明
 

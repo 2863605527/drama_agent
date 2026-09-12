@@ -124,9 +124,6 @@ jobs:
   e2e:
     name: E2E Smoke (Playwright)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
 
@@ -140,7 +137,6 @@ jobs:
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
 
       - name: Install backend deps
         run: |
@@ -148,17 +144,21 @@ jobs:
           pip install -r requirements-dev.txt
           pip install aiosqlite uvicorn
 
+      - name: Install E2E deps (root)
+        run: npm ci
+
       - name: Install frontend deps
+        working-directory: frontend
         run: npm ci
 
       - name: Build frontend
+        working-directory: frontend
         run: npm run build
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
       - name: Start backend
-        working-directory: ${{ github.workspace }}
         run: |
           ENVIRONMENT=development \
           JWT_SECRET_KEY=ci-e2e-secret-key-at-least-32-bytes \
@@ -172,7 +172,6 @@ jobs:
           done
 
       - name: Run E2E smoke
-        working-directory: ${{ github.workspace }}/e2e
         run: npx playwright test
 
   # ---------- 2. 构建镜像并推送到 GHCR（PR 只构建不推；main/tag 推送）----------

@@ -1,0 +1,12 @@
+{
+  "name": "drama-agent-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Drama-Agent 端到端测试（Playwright），测试代码在 e2e/ 目录",
+  "scripts": {
+    "test:e2e": "playwright test e2e/"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0"
+  }
+}

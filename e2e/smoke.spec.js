@@ -23,9 +23,9 @@ test('注册 → 工作台 → 未配置模型拦截 → 通道教程弹窗', as
   await expect(page.locator('body')).toContainText(/新建短剧/, { timeout: 25_000 })
   await expect(page.locator('body')).toContainText(/开始生成/, { timeout: 10_000 })
 
-  // ---- 3. 未配置 LLM → 开始生成被拦截 ----
-  await page.getByRole('button', { name: /开始生成/ }).first().click()
-  await expect(page.locator('body')).toContainText(/大模型|LLM/, { timeout: 8_000 })
+  // ---- 3. 未配置 LLM → 开始生成按钮禁用（拦截进入流程）----
+  const startBtn = page.getByRole('button', { name: /开始生成/ }).first()
+  await expect(startBtn).toBeDisabled({ timeout: 8_000 })
 
   // ---- 4. 模型通道弹窗 → 教程 ----
   await page.getByText('模型通道', { exact: true }).click()
