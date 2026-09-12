@@ -134,6 +134,10 @@ async def delete_task(task_id: str, current_user=Depends(get_current_user),
     except Exception as e:
         logger.error("DELETE /task asset gc error: %s", e)
     logger.info("DELETE /task | task=%s | user=%s", task_id, current_user.username)
+    from core.audit import audit
+    from db.database import AsyncSessionLocal as _AuditSession
+    async with _AuditSession() as _adb:
+        await audit(_adb, current_user.id, "task_deleted", {"task_id": task_id})
     return {"ok": True}
 
 

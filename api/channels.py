@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth.deps import get_current_user
 from core import crypto
+from core.audit import audit
 from db import crud
 from db.database import get_db
 from mcp_client.agent_mcp_client import mcp_client
@@ -53,6 +54,11 @@ async def put_channel_config(payload: chs.ChannelConfigPayload,
                 (merged.get("llm") or {}).get("channel"),
                 (merged.get("image") or {}).get("channel"),
                 (merged.get("video") or {}).get("channel"))
+    await audit(db, current_user.id, "channel_saved", {
+        "llm": (merged.get("llm") or {}).get("channel"),
+        "image": (merged.get("image") or {}).get("channel"),
+        "video": (merged.get("video") or {}).get("channel"),
+    })
     return {"ok": True, "config": chs.mask_sensitive(merged)}
 
 

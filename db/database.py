@@ -20,13 +20,13 @@ Base = declarative_base()
 async def init_db():
     """启动时创建所有表（生产环境建议改用 Alembic 迁移，见 migrations/）"""
     from db import models  # noqa: F401
+    from core.audit import AuditLog  # noqa: F401   # 审计日志表（P2-11）注册进 metadata
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         # 幂等补列：老库 tasks 表缺列时自动 ALTER 补上，避免手动迁移
         await conn.run_sync(_ensure_tasks_channel_config)
         await conn.run_sync(_ensure_tasks_episode_and_logs)
         await conn.run_sync(_ensure_users_token_version)
-
 
 def _ensure_tasks_channel_config(sync_conn):
     """同步探测 tasks 表结构，缺 channel_config 列则 ALTER 补上（MySQL / SQLite 兼容）。"""

@@ -7,6 +7,7 @@ from auth.deps import get_current_user
 from auth.jwt import create_access_token
 from auth.schemas import RegisterRequest, LoginRequest, TokenResponse, ChangePasswordRequest, MessageResponse
 from auth.validators import validate_username, validate_password
+from core.audit import audit
 from core.config import settings
 from core.security import hash_password, verify_password
 from db import crud
@@ -34,6 +35,7 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     user = await crud.create_user(db, req.username, hash_password(req.password))
     token = create_access_token(user.id, user.username, token_version=user.token_version or 0)
     logger.info("user registered | id=%s | name=%s", user.id, user.username)
+    await audit(db, user.id, "register", {"username": user.username})
     return TokenResponse(access_token=token, username=user.username)
 
 
@@ -44,8 +46,10 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
     user = await crud.get_user_by_username(db, req.username)
     if not user or not verify_password(req.password, user.password_hash):
         logger.warning("login failed | name=%s", req.username)
+        await audit(db, None, "login_failed", {"username": req.username})
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     token = create_access_token(user.id, user.username, token_version=user.token_version or 0)
+    await audit(db, user.id, "login", {"username": user.username})
     return TokenResponse(access_token=token, username=user.username)
 
 
@@ -69,6 +73,7 @@ async def change_password(req: ChangePasswordRequest,
         raise HTTPException(status_code=400, detail="新密码不能与旧密码相同")
     user = await crud.update_password(db, current_user, hash_password(req.new_password))
     logger.info("password changed | id=%s | all tokens revoked", user.id)
+    await audit(db, user.id, "change_password", {"revoked_all": True})
     return MessageResponse(ok=True, detail="密码已修改，所有设备已退出，请重新登录")
 
 
@@ -78,4 +83,5 @@ async def logout_all(current_user=Depends(get_current_user),
     """退出所有设备：token_version +1，已签发的其他设备 token 全部失效（当前请求的 token 同样失效）。"""
     user = await crud.bump_token_version(db, current_user)
     logger.info("logout all devices | id=%s | version=%s", user.id, user.token_version)
+    await audit(db, user.id, "logout_all")
     return MessageResponse(ok=True, detail="已退出所有设备")

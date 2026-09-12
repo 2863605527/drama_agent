@@ -35,5 +35,10 @@ export default defineConfig({
         }
       }
     }
+  },
+  test: {
+    // P1-5：store 纯逻辑单测（无需 DOM/浏览器）
+    environment: 'node',
+    include: ['src/**/__tests__/**/*.spec.js']
   }
 })
