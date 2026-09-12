@@ -62,6 +62,24 @@ class CacheStaticFiles(StaticFiles):
         return response
 
 
+class SignedAssets(CacheStaticFiles):
+    """/assets 媒体托管 + P0 访问签名：无签名 / 过期 / 篡改的请求一律 403。
+
+    通过 ASSET_SIGN_DISABLED=1 可整体关闭（仅用于内网调试或兼容极端场景，生产禁止）。
+    """
+    async def get_response(self, path: str, scope):
+        if not os.getenv("ASSET_SIGN_DISABLED", "").strip() in ("1", "true", "yes"):
+            from auth.asset_sign import verify_asset_signature, extract_query
+            query = extract_query(scope.get("query_string", b"").decode("latin-1") if isinstance(scope.get("query_string"), bytes) else (scope.get("query_string") or ""))
+            exp = (query.get("exp") or [""])[0]
+            sig = (query.get("sig") or [""])[0]
+            # 签名 HMAC 基于完整 /assets/<path>，静态路由的 path 已去除前缀，需拼回
+            if not verify_asset_signature(f"/assets/{path}", exp, sig):
+                from starlette.responses import JSONResponse
+                return JSONResponse(status_code=403, content={"detail": "媒体资源访问签名缺失或已失效，请刷新页面重试"})
+        return await super().get_response(path, scope)
+
+
 class SPAStaticFiles(NoCacheStaticFiles):
     """Vue 单页应用托管：静态文件存在则返回，否则回退 index.html（支持前端 history 路由刷新）。"""
     async def get_response(self, path: str, scope):
@@ -239,8 +257,8 @@ async def _unhandled_zh(request: Request, exc: Exception):
 # ---------- 业务路由（按类注册，必须在 SPA 托管之前） ----------
 api_routes.register_routers(app)
 
-# /assets：images/uploads 长缓存（uuid 文件名不可变），videos/audio/final 保持 no-cache
-app.mount("/assets", CacheStaticFiles(directory="assets"), name="assets")
+# /assets：images/uploads 长缓存（uuid 文件名不可变），videos/audio/final 保持 no-cache；P0 签名访问
+app.mount("/assets", SignedAssets(directory="assets"), name="assets")
 
 
 # ---------- 前端 Vue 工程构建产物托管（SPA） ----------

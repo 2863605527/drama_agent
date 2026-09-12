@@ -94,9 +94,14 @@ async def task_stream(task_id: str, token: str = "", db: AsyncSession = Depends(
     history, queue = await progress_hub.subscribe(task_id)
 
     async def event_gen():
+        def _emit(evt: dict) -> str:
+            # P0：事件里的 /assets 媒体 URL 附加访问签名（重放与实时一致）
+            from auth.asset_sign import sign_nested_assets
+            return f"event: {evt['event']}\ndata: {json.dumps(sign_nested_assets(evt), ensure_ascii=False)}\n\n"
+
         try:
             for evt in history:
-                yield f"event: {evt['event']}\ndata: {json.dumps(evt, ensure_ascii=False)}\n\n"
+                yield _emit(evt)
                 if evt["event"] in ("done", "fail"):
                     continue
             while True:
@@ -105,7 +110,7 @@ async def task_stream(task_id: str, token: str = "", db: AsyncSession = Depends(
                 except asyncio.TimeoutError:
                     yield ": keep-alive\n\n"
                     continue
-                yield f"event: {evt['event']}\ndata: {json.dumps(evt, ensure_ascii=False)}\n\n"
+                yield _emit(evt)
         except asyncio.CancelledError:
             pass
         finally:

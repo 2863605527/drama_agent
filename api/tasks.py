@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from agent.drama_agent import DramaAgent
 from api.deps import get_agent
+from auth.asset_sign import sign_nested_assets
 from core import metrics
 from core.deps import load_owned_task
 from auth.deps import get_current_user
@@ -36,6 +37,11 @@ def _masked_task(task):
     return task.model_copy(update={"channel_profile": chs.mask_sensitive(task.channel_profile)})
 
 
+def _serialize_task(task):
+    """出网序列化：掩码敏感字段 + 给 /assets 媒体 URL 附加访问签名（P0）。"""
+    return sign_nested_assets(_masked_task(task))
+
+
 # ---------- 任务创建与查询 ----------
 
 @router.post("/submit", response_model=DramaTask)
@@ -47,7 +53,7 @@ async def submit_task(req: SubmitDramaRequest, current_user=Depends(get_current_
     metrics.TASK_SUBMITTED.labels(current_user.username).inc()
     metrics.ACTIVE_TASKS.inc()
     logger.info("task created: %s", task.task_id)
-    return _masked_task(task)
+    return _serialize_task(task)
 
 
 @router.post("/{parent_id}/episode", response_model=DramaTask)
@@ -65,7 +71,7 @@ async def create_next_episode(parent_id: str, req: EpisodeRequest, current_user=
         raise HTTPException(status_code=400, detail=str(e))
     metrics.TASK_SUBMITTED.labels(current_user.username).inc()
     metrics.ACTIVE_TASKS.inc()
-    return _masked_task(task)
+    return _serialize_task(task)
 
 
 @router.get("/list")
@@ -75,7 +81,7 @@ async def list_tasks(current_user=Depends(get_current_user),
     tasks = await agent.list_user_tasks(current_user.id)
     out = []
     for t in tasks:
-        d = t.model_dump(mode="json")
+        d = sign_nested_assets(t.model_dump(mode="json"))
         d["channel_profile"] = chs.mask_sensitive(d.get("channel_profile"))
         out.append(d)
     return out
@@ -86,7 +92,7 @@ async def human_review(req: HumanReviewConfirm, current_user=Depends(get_current
                        agent: DramaAgent = Depends(get_agent)):
     # task_id 在 body 中，先做归属校验
     await load_owned_task(req.task_id, current_user, agent)
-    return _masked_task(await agent.human_review_handle(req))
+    return _serialize_task(await agent.human_review_handle(req))
 
 
 @router.get("/{task_id}", response_model=DramaTask | None)
@@ -96,7 +102,7 @@ async def get_task_info(task_id: str, current_user=Depends(get_current_user),
     task = await load_owned_task(task_id, current_user, agent)
     if task is None:
         return None
-    return task.model_copy(update={"channel_profile": chs.mask_sensitive(task.channel_profile)})
+    return sign_nested_assets(task.model_copy(update={"channel_profile": chs.mask_sensitive(task.channel_profile)}))
 
 
 # ---------- 任务级操作 ----------
@@ -108,7 +114,7 @@ async def retry_task(task_id: str, current_user=Depends(get_current_user),
     await load_owned_task(task_id, current_user, agent)
     logger.info("POST /retry | task=%s", task_id)
     try:
-        return _masked_task(await agent.retry_task(task_id))
+        return _serialize_task(await agent.retry_task(task_id))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -150,7 +156,7 @@ async def compose_video(task_id: str, req: ComposeVideoRequest, current_user=Dep
         raise HTTPException(status_code=400, detail=f"目前仅生成 {generated}/{total} 个片段，至少生成 2 个片段才能合成（或全部生成后合成完整短剧）")
     if total == 0:
         raise HTTPException(status_code=400, detail="剧本为空，无法合成")
-    return _masked_task(await agent.compose_video(task_id))
+    return _serialize_task(await agent.compose_video(task_id))
 
 
 # ---------- 资产图片操作 ----------
@@ -198,7 +204,7 @@ async def replace_image(task_id: str, target_type: str = Form(...), target_id: s
     async with AsyncSessionLocal() as sdb:
         await asset_store.register_upload_row(sdb, url=url, user_id=user_id,
                                               task_id=task_id, commit=True)
-    return _masked_task(await agent.replace_image(task_id, target_type, target_id, url))
+    return _serialize_task(await agent.replace_image(task_id, target_type, target_id, url))
 
 
 @router.post("/{task_id}/clear_image", response_model=DramaTask | None)
@@ -207,7 +213,7 @@ async def clear_image(task_id: str, req: RegenerateRequest, current_user=Depends
     """清除某张角色/场景图片（回到未生成状态，任务状态不回退）"""
     await load_owned_task(task_id, current_user, agent)
     logger.info("POST /clear_image | task=%s | %s:%s", task_id, req.target_type, req.target_id)
-    return _masked_task(await agent.clear_image(task_id, req.target_type, req.target_id))
+    return _serialize_task(await agent.clear_image(task_id, req.target_type, req.target_id))
 
 
 @router.post("/{task_id}/regenerate", response_model=DramaTask | None)
@@ -216,7 +222,7 @@ async def regenerate(task_id: str, req: RegenerateRequest, current_user=Depends(
     """失败重试：重新生成角色图 / 场景图（昼夜）/ 片段视频"""
     await load_owned_task(task_id, current_user, agent)
     logger.info("POST /regenerate | task=%s | %s:%s", task_id, req.target_type, req.target_id)
-    return _masked_task(await agent.regenerate(task_id, req.target_type, req.target_id))
+    return _serialize_task(await agent.regenerate(task_id, req.target_type, req.target_id))
 
 
 # ---------- 剧本编辑 ----------
@@ -226,7 +232,7 @@ async def update_character(task_id: str, req: UpdateCharacterRequest, current_us
                            agent: DramaAgent = Depends(get_agent)):
     """手动编辑角色姓名 / 性格详情"""
     await load_owned_task(task_id, current_user, agent)
-    return _masked_task(await agent.update_character(task_id, req.char_id, req.name, req.description))
+    return _serialize_task(await agent.update_character(task_id, req.char_id, req.name, req.description))
 
 
 @router.post("/{task_id}/update_scene", response_model=DramaTask | None)
@@ -234,7 +240,7 @@ async def update_scene(task_id: str, req: UpdateSceneRequest, current_user=Depen
                        agent: DramaAgent = Depends(get_agent)):
     """手动编辑场景环境描述（重新生成场景图时生效）"""
     await load_owned_task(task_id, current_user, agent)
-    return _masked_task(await agent.update_scene(task_id, req.scene_key, req.description))
+    return _serialize_task(await agent.update_scene(task_id, req.scene_key, req.description))
 
 
 @router.post("/{task_id}/update_audio_mode", response_model=DramaTask | None)
@@ -242,7 +248,7 @@ async def update_audio_mode(task_id: str, req: UpdateAudioModeRequest, current_u
                             agent: DramaAgent = Depends(get_agent)):
     """切换配音方式：auto / native / tts"""
     await load_owned_task(task_id, current_user, agent)
-    return _masked_task(await agent.update_audio_mode(task_id, req.audio_mode))
+    return _serialize_task(await agent.update_audio_mode(task_id, req.audio_mode))
 
 
 @router.post("/{task_id}/update_shot", response_model=DramaTask | None)
@@ -250,7 +256,7 @@ async def update_shot(task_id: str, req: UpdateShotRequest, current_user=Depends
                       agent: DramaAgent = Depends(get_agent)):
     """手动编辑分镜文案 / 镜头 / 光影 / 画面描述 prompt"""
     await load_owned_task(task_id, current_user, agent)
-    return _masked_task(await agent.update_shot(task_id, req.shot_id, req.content, req.camera, req.lighting, req.prompt))
+    return _serialize_task(await agent.update_shot(task_id, req.shot_id, req.content, req.camera, req.lighting, req.prompt))
 
 
 @router.post("/{task_id}/update_script", response_model=DramaTask | None)
@@ -259,4 +265,4 @@ async def update_script(task_id: str, req: UpdateScriptRequest, current_user=Dep
     """手动编辑剧本标题与原始剧本内容"""
     await load_owned_task(task_id, current_user, agent)
     logger.info("POST /update_script | task=%s | title=%s", task_id, req.title)
-    return _masked_task(await agent.update_script(task_id, req.title, req.raw_content))
+    return _serialize_task(await agent.update_script(task_id, req.title, req.raw_content))
