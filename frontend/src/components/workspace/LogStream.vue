@@ -6,7 +6,7 @@
       <button class="fold">{{ open ? '收起 ▲' : '展开 ▼' }}</button>
     </header>
     <div v-show="open" class="log-body" ref="bodyRef">
-      <div v-for="(line, i) in taskStore.logs" :key="i" class="log-line">{{ line }}</div>
+      <div v-for="(line, i) in visibleLogs" :key="i" class="log-line">{{ line }}</div>
       <div v-if="!taskStore.logs.length" class="log-empty">{{ emptyText }}</div>
     </div>
   </section>
@@ -20,6 +20,11 @@ const taskStore = useTaskStore()
 const open = ref(true)
 const bodyRef = ref(null)
 
+// P2-9：增量渲染——store 保留全量日志（持久化/导出用），DOM 只渲染末尾窗口，
+// 避免数千条日志时 v-for 全量重建导致界面卡顿
+const LOG_VISIBLE_WINDOW = 500
+const visibleLogs = computed(() => taskStore.logs.slice(-LOG_VISIBLE_WINDOW))
+
 // 空态文案：正在跑的任务等待事件；已推进到后续阶段却没有日志的，多为日志持久化上线前的历史任务
 const emptyText = computed(() => {
   const st = taskStore.current?.status
@@ -32,6 +37,14 @@ const emptyText = computed(() => {
 watch(() => taskStore.logs.length, async (n, old) => {
   // 有新日志时若被手动折叠，自动展开，避免生成图/视频阶段误以为日志“消失”
   if (!open.value && (n || 0) > (old || 0)) open.value = true
+  if (!open.value) return
+  await nextTick()
+  const el = bodyRef.value
+  if (el) el.scrollTop = el.scrollHeight
+})
+
+// 折叠时窗口上移后仍需保持滚动位置正确
+watch(visibleLogs, async () => {
   if (!open.value) return
   await nextTick()
   const el = bodyRef.value
