@@ -532,10 +532,7 @@ def _video_http_submit(prompt: str, ref_url: str, dur_params: dict, gen_seconds:
                 logger.warning("extra_fields must be a JSON object, ignored")
         except Exception as e:
             logger.warning("extra_fields is not valid JSON, ignored | %s", e)
-    # logger.info(f"submit_url: {submit_url}")
-    # logger.info(f"payload: {payload}")
     resp = requests.post(submit_url, json=payload, headers=_http_headers(token), timeout=120)
-    # logger.info(f"status: {resp.status_code}, response: {resp.text[:200]}")
     _raise_for_http(resp, "HTTP 视频提交")
     data = resp.json()
     task_id = _json_get(data, task_id_path)

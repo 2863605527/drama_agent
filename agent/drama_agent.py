@@ -707,7 +707,7 @@ class DramaAgent:
         mode = await schedule_segment_video(
             task_id, segment_id, on_finish=lambda: self._after_job(task_id, (task_id, key)))
         if mode == "celery":
-            self._busy.discard((task_id, key))   # worker 独立进程，Web 不长期持本地忙锁   # worker 独立进程，Web 不长期持本地忙锁
+            self._busy.discard((task_id, key))   # worker 独立进程，Web 不长期持本地忙锁
         logger.info("segment video scheduled | task=%s | seg=%s | mode=%s", task_id, segment_id, mode)
         return task
 
