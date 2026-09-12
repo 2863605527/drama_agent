@@ -42,10 +42,18 @@ class TestSettings:
 
     def test_production_strong_secret_ok(self):
         s = Settings(environment="production",
-                     jwt_secret_key="4f8a2b9c1e7d3f6a8b0c2d4e6f8a0b1c2d3e4f5a6b7c8d9e0f",
+                     jwt_secret_key="a9c3f7e2b1d845609a1b2c3d4e5f60718293a4b5c6d7e8f90011223344556677",
                      llm_api_key="x", volc_access_key="x", volc_secret_key="x")
         problems = s.validate_required()
         assert not any("JWT_SECRET_KEY" in p for p in problems)
+
+    def test_production_compose_default_secret_rejected(self):
+        # docker-compose.yml 历史内置的 4f8a... 曾在公开仓库出现，生产沿用 = 密钥公开可伪造 token，必须拒启
+        s = Settings(environment="production",
+                     jwt_secret_key="4f8a2b9c1e7d3f6a8b0c2d4e6f8a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7",
+                     llm_api_key="x", volc_access_key="x", volc_secret_key="x")
+        with pytest.raises(RuntimeError, match="JWT_SECRET_KEY"):
+            s.validate_required()
 
     def test_development_no_jwt_error(self):
         # 开发环境仍只告警，不阻断启动

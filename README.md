@@ -289,7 +289,7 @@ npx playwright test                 # 在 e2e/ 目录执行
 - **Adminer 默认不启动（P1-7）**：`docker-compose.yml` 中 adminer 走 `profiles: ["adminer"]`，需要时 `docker compose --profile adminer up -d`，避免把数据库管理面板暴露在默认端口。
 - **指标不再失真（P0-2）**：任务状态指标仅在 DB 状态真实变化时自增（`agent/drama_agent.py::_save_task`）。
 - **生产 JWT 密钥强制（P0-3）**：`ENVIRONMENT=production` 下 JWT_SECRET_KEY 为空/占位/过短直接拒绝启动（`core/config.py`），
-  docker-compose 默认注入一个内置随机串仅供本地快速起，**生产必须用 `openssl rand -hex 32` 覆盖**。
+  docker-compose 的默认值为弱密钥占位（含历史内置串 `4f8a...` 已列入黑名单），**生产必须用 `openssl rand -hex 32` 覆盖**，否则容器拒启——这是刻意设计，防止用公开仓库可查的密钥上线导致 token 可伪造。
 - **JWT 吊销（P0-1）**：`users.token_version` 随改密 / `POST /api/auth/logout-all` 自增，旧 token 立即失效（401「登录状态已失效」）；
   新增 `POST /api/auth/change-password`（校验旧密码后全端下线）。
 - **媒体访问签名（P0-2）**：后端下发所有 `/assets/...` URL 附加 HMAC 签名（7 天有效），静态路由对无签名/过期/篡改请求返回 403，

@@ -56,7 +56,7 @@ services:
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
       ENVIRONMENT: ${ENVIRONMENT:-production}
       # P0 硬化：生产必须替换为随机串（openssl rand -hex 32）；本地未设置时用内置随机默认（可启动，但不建议生产沿用）
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-4f8a2b9c1e7d3f6a8b0c2d4e6f8a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-please-change-this-to-a-random-secret-string}
       # 异步队列：启用 celery profile 时自动指向 compose 内的 redis
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       USE_CELERY: ${USE_CELERY:-false}
@@ -86,7 +86,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-drama_2024}
       ENVIRONMENT: ${ENVIRONMENT:-production}
       # P0 硬化：worker 与 Web 必须使用同一 JWT_SECRET_KEY（改密/吊销一致性）
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-4f8a2b9c1e7d3f6a8b0c2d4e6f8a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-please-change-this-to-a-random-secret-string}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       USE_CELERY: "true"
       LOG_FORMAT: ${LOG_FORMAT:-json}

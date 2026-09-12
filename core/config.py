@@ -42,7 +42,12 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
 
     # 占位/弱密钥检测：生产环境必须显式配置强随机密钥，否则拒绝启动（P0：默认口令硬化）
-    _WEAK_JWT_SECRETS = {"", "please-change-this-to-a-random-secret-string", "drama-agent-change-me"}
+    # 注意：docker-compose.yml 历史内置的 4f8a... 曾在公开仓库出现，任何人可查到，
+    # 生产沿用即等于 JWT 密钥公开、可伪造任意用户 token —— 一并列入弱密钥黑名单。
+    _WEAK_JWT_SECRETS = {
+        "", "please-change-this-to-a-random-secret-string", "drama-agent-change-me",
+        "4f8a2b9c1e7d3f6a8b0c2d4e6f8a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7",
+    }
 
     def _is_weak_jwt_secret(self) -> bool:
         s = (self.jwt_secret_key or "").strip()
