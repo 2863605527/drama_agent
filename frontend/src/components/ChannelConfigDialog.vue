@@ -18,12 +18,17 @@
 
       <div class="body">
         <!-- 通道选择 -->
-        <label class="row">
+        <div class="row channel-row">
           <span class="lbl">通道类型</span>
-          <select class="input" v-model="form[kind].channel">
-            <option v-for="c in channelOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
-          </select>
-        </label>
+          <div class="ch-row">
+            <select class="input" v-model="form[kind].channel">
+              <option v-for="c in channelOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
+            </select>
+            <button class="tut-btn" title="查看该通道图文配置教程" @click="tutorial.open(kind, form[kind].channel)">
+              📖 教程
+            </button>
+          </div>
+        </div>
 
         <!-- 动态字段（主字段） -->
         <label class="row" v-for="f in primaryFields" :key="f.key">
@@ -77,6 +82,7 @@
         <div v-if="isEnv" class="env-hint">
           ⚠️ 本段当前仍是服务端默认通道（旧版本配置）。新版本已移除「系统默认」选项，
           <b>请在下方选择具体通道并填写模型与 Key</b>，所有能力（剧本 / 图片 / 视频）均需手动配置。
+          <span class="env-tut" @click="tutorial.open(kind, cur.channel)">📖 查看配置教程</span>
         </div>
       </div>
 
@@ -91,6 +97,7 @@
         </button>
       </footer>
     </div>
+    <ChannelTutorial ref="tutorial" />
   </div>
 </template>
 
@@ -100,9 +107,11 @@ import { useChannelStore } from '@/stores/channel'
 import { channelApi } from '@/api/channel'
 import { useToastStore } from '@/stores/toast'
 import { extractError } from '@/api/request'
+import ChannelTutorial from './ChannelTutorial.vue'
 
 const channel = useChannelStore()
 const toast = useToastStore()
+const tutorial = ref(null)
 
 const kinds = [
   { key: 'llm', label: '大模型' },
@@ -310,6 +319,17 @@ header p { font-size: 12.5px; color: var(--text-3); margin-top: 3px; }
 .req { color: var(--danger); font-style: normal; margin-left: 2px; }
 .switch-line { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); cursor: pointer; }
 .switch-line input { width: 16px; height: 16px; accent-color: var(--primary); }
+.channel-row .lbl { display: block; font-size: 12.5px; color: var(--text-2); margin-bottom: 6px; }
+.ch-row { display: flex; gap: 8px; }
+.ch-row .input { flex: 1; }
+.tut-btn {
+  flex-shrink: 0; padding: 0 12px; border-radius: 9px; font-size: 12.5px; cursor: pointer;
+  background: var(--primary-soft); border: 1px dashed var(--border-strong); color: #cfd8ff;
+  font-family: inherit; transition: all .15s;
+}
+.tut-btn:hover { background: #2b3bff33; border-style: solid; color: #fff; }
+.env-tut { display: inline-block; margin-top: 6px; color: var(--primary); cursor: pointer; font-size: 12.5px; }
+.env-tut:hover { text-decoration: underline; }
 .env-hint {
   padding: 14px; border-radius: 10px; background: var(--primary-soft);
   color: #c7d2fe; font-size: 12.5px; line-height: 1.7; border: 1px dashed var(--border-strong);
