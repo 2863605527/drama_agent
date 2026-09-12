@@ -1,5 +1,5 @@
 # ===== Web 框架 =====
-fastapi>=0.110,<1.0
+fastapi>=0.141.1,<1.0
 uvicorn[standard]>=0.29
 gunicorn>=21.2
 python-multipart>=0.0.9
