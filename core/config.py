@@ -41,6 +41,17 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 1440
     jwt_algorithm: str = "HS256"
 
+    # 占位/弱密钥检测：生产环境必须显式配置强随机密钥，否则拒绝启动（P0：默认口令硬化）
+    _WEAK_JWT_SECRETS = {"", "please-change-this-to-a-random-secret-string", "drama-agent-change-me"}
+
+    def _is_weak_jwt_secret(self) -> bool:
+        s = (self.jwt_secret_key or "").strip()
+        if not s or len(s) < 16:
+            return True
+        if s in self._WEAK_JWT_SECRETS or s.startswith("drama-agent-change-me"):
+            return True
+        return False
+
     # ---------- LLM ----------
     llm_api_url: str = "https://api.deepseek.com"
     llm_api_key: str = ""
@@ -122,14 +133,22 @@ class Settings(BaseSettings):
     task_hard_time_limit: int = 2100   # 单任务硬超时（秒）
 
     def validate_required(self) -> list[str]:
-        """返回缺失的关键配置列表（启动时调用，缺则打印警告；生产环境缺密钥直接报错）"""
+        """返回缺失的关键配置列表（启动时调用）。
+
+        生产环境（environment=production）下 JWT 密钥缺失/仍为占位值时**直接抛错拒绝启动**，
+        避免用默认密钥上线；开发环境仅返回告警文案。
+        """
         problems = []
         if not self.llm_api_key:
             problems.append("LLM_API_KEY 未配置，剧本生成将失败")
         if not self.volc_access_key or not self.volc_secret_key:
             problems.append("VOLC_ACCESS_KEY/VOLC_SECRET_KEY 未配置，图片/视频生成将失败")
-        if self.environment == "production" and self.jwt_secret_key == "please-change-this-to-a-random-secret-string":
-            problems.append("生产环境必须修改 JWT_SECRET_KEY 为随机字符串")
+        if self._is_weak_jwt_secret():
+            if self.environment == "production":
+                raise RuntimeError(
+                    "生产环境必须配置强随机 JWT_SECRET_KEY（当前为空/占位/过短），拒绝启动。"
+                    "请设置环境变量 JWT_SECRET_KEY，例如：openssl rand -hex 32")
+            problems.append("JWT_SECRET_KEY 未修改为随机字符串（开发环境可暂缓，生产必须改）")
         return problems
 
     @property

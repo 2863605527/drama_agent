@@ -12,13 +12,30 @@ async def get_user_by_username(db: AsyncSession, username: str) -> Optional[User
     return result.scalar_one_or_none()
 
 
+async def update_password(db: AsyncSession, user: User, new_password_hash: str) -> User:
+    """改密码并吊销所有已签发 token（token_version +1）。"""
+    user.password_hash = new_password_hash
+    user.token_version = (user.token_version or 0) + 1
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def bump_token_version(db: AsyncSession, user: User) -> User:
+    """「退出所有设备」：token_version +1，旧 token 全部失效。"""
+    user.token_version = (user.token_version or 0) + 1
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
 async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
     result = await db.execute(select(User).where(User.id == user_id))
     return result.scalar_one_or_none()
 
 
 async def create_user(db: AsyncSession, username: str, password_hash: str) -> User:
-    user = User(username=username, password_hash=password_hash)
+    user = User(username=username, password_hash=password_hash, token_version=0)
     db.add(user)
     await db.commit()
     await db.refresh(user)

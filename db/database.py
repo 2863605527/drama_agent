@@ -25,6 +25,7 @@ async def init_db():
         # 幂等补列：老库 tasks 表缺列时自动 ALTER 补上，避免手动迁移
         await conn.run_sync(_ensure_tasks_channel_config)
         await conn.run_sync(_ensure_tasks_episode_and_logs)
+        await conn.run_sync(_ensure_users_token_version)
 
 
 def _ensure_tasks_channel_config(sync_conn):
@@ -60,6 +61,19 @@ def _ensure_tasks_episode_and_logs(sync_conn):
     for name, ddl in _EPISODE_COLUMNS.items():
         if name not in cols:
             sync_conn.execute(text(f"ALTER TABLE tasks ADD COLUMN {name} {ddl}"))
+
+
+# P0：users 表 token_version 幂等补列（老库自动 ALTER，无需手动迁移）
+def _ensure_users_token_version(sync_conn):
+    from sqlalchemy import inspect, text
+    inspector = inspect(sync_conn)
+    if "users" not in inspector.get_table_names():
+        return
+    cols = {c["name"] for c in inspector.get_columns("users")}
+    if "token_version" not in cols:
+        dialect = sync_conn.dialect.name
+        default = "DEFAULT 0" if dialect == "mysql" else "DEFAULT 0"
+        sync_conn.execute(text(f"ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL {default}"))
 
 
 async def get_db():

@@ -15,3 +15,13 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     username: str
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str = Field(..., min_length=1, max_length=64, description="当前密码")
+    new_password: str = Field(..., min_length=6, max_length=20, description="新密码：仅字母/数字，6~20 位")
+
+
+class MessageResponse(BaseModel):
+    ok: bool = True
+    detail: str = ""
