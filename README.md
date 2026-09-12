@@ -152,7 +152,7 @@ F:\python\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8010
 
 | 变量 | 必需 | 说明 |
 |---|---|---|
-| `JWT_SECRET_KEY` | 是 | **生产必须**改为随机串（`openssl rand -hex 32`），否则 `ENVIRONMENT=production` 时**拒绝启动** |
+| `JWT_SECRET_KEY` | 是 | **生产必须**改为随机串（`openssl rand -hex 32`），否则 `ENVIRONMENT=production` 时**拒绝启动**（compose 内置默认值为弱密钥占位，已在黑名单中，同样拒启——防止公开仓库可查的密钥上线） |
 | `MYSQL_*` | 是 | 数据库连接，compose 已覆盖容器内地址为 `mysql` |
 | `DRAMA_DB` | 否 | 设为 `sqlite` 时用本地 SQLite（`./drama_agent.db`），免 MySQL 跑通/测试；不设则走 MySQL |
 | `ASSET_SIGN_DISABLED` | 否 | 设为 `1` 关闭 /assets 媒体签名（仅内网调试，生产禁用） |
@@ -200,9 +200,9 @@ alembic revision --autogenerate -m "describe change"
 
 ## 测试
 
-后端测试用 SQLite 内存库，**不依赖真实 MySQL / LLM / 火山 / Redis / Celery**（外部能力全部 mock），共 **154** 个用例：
+后端测试用 SQLite 内存库，**不依赖真实 MySQL / LLM / 火山 / Redis / Celery**（外部能力全部 mock），共 **155** 个用例：
 
-- 安全与基建：密码哈希、JWT、限流器、配置校验、schema、注册登录、**越权拦截**、健康检查、LLM 双模式、**全局异常脱敏**（`test_error_masking.py`）；
+- 安全与基建：密码哈希、JWT、限流器、配置校验、schema、注册登录、**越权拦截**、健康检查、LLM 双模式、**全局异常脱敏**（`test_error_masking.py`）、**compose 历史默认 JWT 密钥拒启**（`test_config.py`）；
 - **P0 吊销机制**（`test_token_revocation.py`）：改密/退出所有设备后旧 token 立即失效、新登录 token 有效、payload 版本号；
 - **P0 媒体签名**（`test_asset_signature.py`）：签名往返/篡改/过期拒绝、嵌套签名与去签名、`/assets` 路由无签名 403；
 - **MySQL 兼容**（`test_mysql_compat.py`，`-m mysql` 标记，本地无 MySQL 自动跳过，CI MySQL 矩阵运行）：建表、`token_version` 幂等补列、用户 CRUD 改密版本自增；
@@ -232,9 +232,12 @@ $env:DRAMA_DB="sqlite"; F:\python\python.exe -m pytest tests -q -p no:cacheprovi
 # 前端单测（Vitest，frontend/ 目录下）
 npm test
 
-# E2E 冒烟（Playwright，需后端已启动 + 浏览器已装）
-npx playwright install chromium      # 首次
-npx playwright test                 # 在 e2e/ 目录执行
+# E2E 冒烟（Playwright，config 在项目根，测试代码在 e2e/）
+# 前置：后端已启动（http://127.0.0.1:8010）；CI 用自带 chromium，本地可用系统 Edge 免下载
+npx playwright install chromium            # 首次（CI 需要；本地可跳过改走 Edge）
+npx playwright test                        # 项目根目录执行
+# 本地用系统 Edge 跑（免下载浏览器）：PW_CHANNEL=msedge PW_HEADLESS=false npx playwright test
+# 指定后端地址：BASE_URL=http://其他地址:8010 npx playwright test
 ```
 
 > 端到端测试曾抓出一个真实并发缺陷：视频并发信号量 `_VIDEO_SLOT` 双重 acquire 泄漏许可，
@@ -431,6 +434,19 @@ npx playwright test                 # 在 e2e/ 目录执行
   「服务器内部错误，请稍后重试（错误码 xxxxxxxx）」，完整堆栈仅落日志并按 trace id 定位。
 - **静态资源分级缓存（P2-7）**：`/assets` 下 `images/`、`uploads/`（uuid 文件名，内容变则 URL 变）
   长缓存 `immutable`；`videos/`、`audio/`、`final/` 任务重跑会覆盖同名文件，保持 no-cache 防旧成片。
+
+### 已知边界与部署建议（非致命，按需处理）
+
+- **容器以 root 运行**：Dockerfile 未切换非 root 用户。个人/内网部署可接受；公网暴露时建议改为非 root
+  用户运行（注意 `assets/ logs/ storage/` 卷挂载目录权限需相应调整）。
+- **JWT 密钥轮换影响**：通道 Key 加密密钥由 `JWT_SECRET_KEY` 派生（`core/crypto.py`）。**更换
+  JWT_SECRET_KEY 后，存量用户已保存的通道配置将无法解密，需在前端重新填写一次**（属预期行为，不是 bug；
+  生产若需平滑轮换，可改为独立加密密钥环境变量并保留旧密钥解密兜底）。
+- **上传无总量配额**：单文件限 10MB，但用户可无限上传直至磁盘打满；建议公网部署时在前置加配额
+  （或后续在 `replace_image` 前检查磁盘剩余空间 < 1GB 拒绝）。
+- **审计日志无清理策略**：`audit_logs` 只增不减，建议定期归档（如每月 `DELETE ... WHERE created_at < 90 天前`）。
+- **多 worker / 多实例需 Redis 桥接**：SSE 进度流与任务运行态默认在单进程内存（见「多实例水平扩展」），
+  单 worker 是当前默认且最稳的形态。
 
 ## 异步任务队列（Celery + Redis，可选）
 
