@@ -21,7 +21,7 @@ cryptography>=42.0   # 用户通道 Key 落库对称加密（Fernet）
 
 # ===== 业务能力 =====
 requests>=2.31
-httpx>=0.27
+httpx>=0.28.1
 mcp>=1.0,<2
 volcengine>=1.0.100
 imageio-ffmpeg>=0.5.1
