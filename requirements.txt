@@ -11,7 +11,7 @@ python-dotenv>=1.0
 
 # ===== 数据库 =====
 sqlalchemy>=2.0
-aiomysql>=0.2
+aiomysql>=0.3.2
 alembic>=1.13
 
 # ===== 鉴权 =====
