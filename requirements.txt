@@ -7,7 +7,7 @@ python-multipart>=0.0.9
 # ===== 配置与校验 =====
 pydantic>=2.6
 pydantic-settings>=2.2
-python-dotenv>=1.0
+python-dotenv>=1.2.3
 
 # ===== 数据库 =====
 sqlalchemy>=2.0
