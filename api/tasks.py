@@ -38,8 +38,14 @@ def _masked_task(task):
 
 
 def _serialize_task(task):
-    """出网序列化：掩码敏感字段 + 给 /assets 媒体 URL 附加访问签名（P0）。"""
-    return sign_nested_assets(_masked_task(task))
+    """出网序列化：掩码敏感字段 + 给 /assets 媒体 URL 附加访问签名（P0）。
+
+    注意：必须先 model_dump 成 dict 再签名——sign_nested_assets 只递归 dict/list，
+    传 Pydantic 模型对象会原样返回，导致 URL 裸奔被 /assets 验签 403（前端裂图）。
+    """
+    if task is None:
+        return None
+    return sign_nested_assets(_masked_task(task).model_dump(mode="json"))
 
 
 # ---------- 任务创建与查询 ----------
@@ -102,7 +108,7 @@ async def get_task_info(task_id: str, current_user=Depends(get_current_user),
     task = await load_owned_task(task_id, current_user, agent)
     if task is None:
         return None
-    return sign_nested_assets(task.model_copy(update={"channel_profile": chs.mask_sensitive(task.channel_profile)}))
+    return _serialize_task(task)
 
 
 # ---------- 任务级操作 ----------

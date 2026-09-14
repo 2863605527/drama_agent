@@ -106,3 +106,58 @@ def test_assets_route_requires_signature(tmp_path):
         assert code == 200
         assert body.startswith(b"\x89PNG")
     asyncio.run(run())
+
+
+# ---------- 回归：任务出网序列化必须真的挂上签名 ----------
+# 历史 bug：_serialize_task 把 Pydantic 模型对象直接传给 sign_nested_assets（只递归 dict/list），
+# 签名静默失效 → 详情接口 URL 裸奔 → /assets 验签 403 → 前端裂图（SSE 事件传 dict 所以能显示一下）。
+
+def _mk_task_with_assets() -> "DramaTask":
+    from schema.drama_schema import (
+        DramaTask, DramaScript, Character, Scene, Shot, Segment, TaskStatus,
+    )
+    script = DramaScript(
+        script_id="s1", title="测试剧本", raw_content="内容",
+        characters=[Character(char_id="c1", name="甲", description="x",
+                              reference_image="/assets/images/c1.png")],
+        scenes=[Scene(scene_key="sc1", description="山",
+                      day_image_url="/assets/images/sc1_day.png",
+                      night_image_url="/assets/images/sc1_night.png")],
+        shots=[Shot(shot_id="sh1", content="全景", camera="远景", lighting="日",
+                    prompt="p", scene_key="sc1", segment_id="seg1")],
+        segments=[Segment(segment_id="seg1", shot_ids=["sh1"], duration=4,
+                          scene_key="sc1", video_url="/assets/videos/seg1.mp4")],
+    )
+    return DramaTask(
+        task_id="t1", thread_id="t1", user_prompt="创意", style="anime",
+        status=TaskStatus.GENERATE_ASSET, script=script,
+        final_video_url="/assets/final/t1.mp4", user_id=1,
+    )
+
+
+def test_serialize_task_signs_all_asset_urls():
+    from api.tasks import _serialize_task
+    out = _serialize_task(_mk_task_with_assets())
+    assert isinstance(out, dict), "出网必须是 dict（FastAPI 再按 response_model 校验）"
+    assert "?exp=" in out["script"]["characters"][0]["reference_image"]
+    assert "?exp=" in out["script"]["scenes"][0]["day_image_url"]
+    assert "?exp=" in out["script"]["scenes"][0]["night_image_url"]
+    assert "?exp=" in out["script"]["segments"][0]["video_url"]
+    assert "?exp=" in out["final_video_url"]
+    # 掩码仍然生效
+    assert out["channel_profile"] in (None, {},) or all(
+        "sk" not in str(v) for v in out["channel_profile"].values())
+
+
+def test_serialize_task_response_model_roundtrip():
+    """签名后的 dict 必须仍能通过 DramaTask response_model 校验（FastAPI 出网路径）。"""
+    from api.tasks import _serialize_task
+    from schema.drama_schema import DramaTask
+    out = _serialize_task(_mk_task_with_assets())
+    revalidated = DramaTask(**out)
+    assert revalidated.script.characters[0].reference_image.startswith("/assets/images/c1.png?exp=")
+
+
+def test_serialize_task_none_passthrough():
+    from api.tasks import _serialize_task
+    assert _serialize_task(None) is None
